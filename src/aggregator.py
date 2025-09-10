@@ -1,9 +1,7 @@
-"""
-Summary aggregation for parent directories
-"""
+"""Summary aggregation for parent directories."""
 
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Set, Optional
 from datetime import datetime
 from collections import Counter
 
@@ -12,271 +10,381 @@ from .__version__ import __version__
 
 
 class SummaryAggregator:
-    """Aggregates summaries from child directories"""
+    """Aggregates child directory summaries for parent directories."""
     
     def __init__(self, settings: DigginSettings):
-        self.settings = settings
-    
-    def aggregate_directory(
-        self,
-        directory: Path,
-        root_path: Path,
-        directory_info: Dict[str, Any],
-        child_digests: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Aggregate information from child directories
+        """Initialize aggregator.
         
         Args:
-            directory: Current directory being analyzed
-            root_path: Root directory of analysis
-            directory_info: Information about current directory
+            settings: Configuration settings
+        """
+        self.settings = settings
+    
+    def aggregate_summaries(self, directory: Path, 
+                          child_digests: List[Dict[str, Any]], 
+                          direct_files_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Aggregate child summaries for a parent directory.
+        
+        Args:
+            directory: Parent directory
             child_digests: List of child directory digests
+            direct_files_info: Information about direct files in parent directory
             
         Returns:
-            Aggregated digest
+            Aggregated digest for parent directory
         """
-        
-        # Base information
+        # Base digest structure
         digest = {
             "name": directory.name,
-            "path": str(directory.relative_to(root_path)) if directory != root_path else ".",
-            "kind": self._infer_directory_kind(directory, directory_info, child_digests),
-            "summary": self._generate_summary(directory, directory_info, child_digests),
-            "capabilities": self._aggregate_capabilities(child_digests),
-            "dependencies": self._aggregate_dependencies(child_digests),
-            "evidence": self._collect_evidence(directory_info, child_digests),
-            "confidence": self._calculate_confidence(directory_info, child_digests),
-            "analyzed_at": datetime.utcnow().isoformat() + "Z",
-            "analyzer_version": f"digin-{__version__}",
+            "path": str(directory),
+            "kind": self._determine_aggregated_kind(child_digests, direct_files_info),
+            "summary": self._generate_aggregated_summary(directory, child_digests, direct_files_info),
+            "capabilities": self._merge_capabilities(child_digests),
+            "public_interfaces": self._merge_public_interfaces(child_digests),
+            "dependencies": self._merge_dependencies(child_digests),
+            "configuration": self._merge_configuration(child_digests),
+            "risks": self._merge_risks(child_digests),
+            "evidence": self._create_evidence(child_digests, direct_files_info),
+            "confidence": self._calculate_aggregate_confidence(child_digests),
+            "analyzed_at": datetime.now().isoformat(),
+            "analyzer_version": __version__
         }
         
-        # Add optional fields if they have content
-        public_interfaces = self._aggregate_public_interfaces(child_digests)
-        if public_interfaces:
-            digest["public_interfaces"] = public_interfaces
-        
-        configuration = self._aggregate_configuration(child_digests)
-        if configuration:
-            digest["configuration"] = configuration
-        
-        risks = self._aggregate_risks(child_digests)
-        if risks:
-            digest["risks"] = risks
-        
-        return digest
+        # Remove empty sections
+        return self._clean_empty_fields(digest)
     
-    def _infer_directory_kind(
-        self,
-        directory: Path,
-        directory_info: Dict[str, Any],
-        child_digests: List[Dict[str, Any]]
-    ) -> str:
-        """Infer the kind of directory based on name and contents"""
+    def _determine_aggregated_kind(self, child_digests: List[Dict[str, Any]], 
+                                  direct_files_info: Optional[Dict[str, Any]]) -> str:
+        """Determine the kind of aggregated directory.
         
-        dir_name = directory.name.lower()
+        Args:
+            child_digests: Child directory digests
+            direct_files_info: Direct files information
+            
+        Returns:
+            Directory kind classification
+        """
+        if not child_digests:
+            return "unknown"
         
-        # Check common directory name patterns
-        if dir_name in {"test", "tests", "__tests__", "spec", "specs"}:
-            return "test"
+        # Count kinds from children
+        kind_counts = Counter(digest.get("kind", "unknown") for digest in child_digests)
         
-        if dir_name in {"doc", "docs", "documentation", "readme"}:
-            return "docs"
+        # If all children are the same kind, inherit it
+        if len(kind_counts) == 1:
+            return list(kind_counts.keys())[0]
         
-        if dir_name in {"config", "configuration", "settings", "conf"}:
-            return "config"
+        # Special aggregation rules
+        most_common_kind = kind_counts.most_common(1)[0][0]
         
-        if dir_name in {"lib", "libs", "library", "libraries", "utils", "utilities", "common", "shared"}:
-            return "lib"
-        
-        if dir_name in {"ui", "frontend", "web", "client", "views", "components"}:
-            return "ui"
-        
-        if dir_name in {"service", "services", "api", "server", "backend"}:
+        # If majority are services, this is likely a service collection
+        if kind_counts.get("service", 0) >= len(child_digests) * 0.6:
             return "service"
         
-        if dir_name in {"infra", "infrastructure", "deployment", "deploy", "ops", "devops"}:
+        # If majority are libs, this is likely a lib collection
+        if kind_counts.get("lib", 0) >= len(child_digests) * 0.6:
+            return "lib"
+        
+        # If majority are tests, this is likely a test suite
+        if kind_counts.get("test", 0) >= len(child_digests) * 0.6:
+            return "test"
+        
+        # If contains mix of services and libs, likely "infra"
+        if "service" in kind_counts and "lib" in kind_counts:
             return "infra"
         
-        # Infer from child kinds
-        if child_digests:
-            child_kinds = [child.get("kind", "unknown") for child in child_digests]
-            kind_counts = Counter(child_kinds)
-            
-            # If majority of children are of the same kind, use that
-            most_common = kind_counts.most_common(1)
-            if most_common and most_common[0][1] > len(child_kinds) / 2:
-                return most_common[0][0]
-        
-        # Check file types for clues
-        files = directory_info.get("files", [])
-        if files:
-            extensions = [f.get("extension", "").lower() for f in files]
-            
-            if any(ext in {".html", ".css", ".js", ".jsx", ".tsx", ".vue"} for ext in extensions):
-                return "ui"
-            
-            if any(ext in {".py", ".java", ".go", ".rs", ".cpp"} for ext in extensions):
-                # Check for main/server patterns
-                filenames = [f.get("name", "").lower() for f in files]
-                if any("main" in name or "server" in name or "app" in name for name in filenames):
-                    return "service"
-                return "lib"
-        
-        return "unknown"
+        # Default to most common kind
+        return most_common_kind
     
-    def _generate_summary(
-        self,
-        directory: Path,
-        directory_info: Dict[str, Any],
-        child_digests: List[Dict[str, Any]]
-    ) -> str:
-        """Generate summary for directory"""
+    def _generate_aggregated_summary(self, directory: Path, 
+                                   child_digests: List[Dict[str, Any]],
+                                   direct_files_info: Optional[Dict[str, Any]]) -> str:
+        """Generate summary for aggregated directory.
         
-        dir_name = directory.name
-        child_count = len(child_digests)
-        file_count = len(directory_info.get("files", []))
+        Args:
+            directory: Parent directory
+            child_digests: Child directory digests  
+            direct_files_info: Direct files information
+            
+        Returns:
+            Human-readable summary
+        """
+        if not child_digests:
+            return f"{directory.name} 目录（暂无子模块分析结果）"
         
-        if child_count == 0:
-            return f"+ {file_count} *����U"
+        # Collect child summaries
+        child_names = [digest.get("name", "未知模块") for digest in child_digests]
+        child_count = len(child_names)
         
-        # Aggregate child summaries
-        child_summaries = []
-        for child in child_digests:
-            summary = child.get("summary", "")
-            if summary and len(summary) < 100:  # Keep only short summaries
-                child_summaries.append(summary)
+        # Determine directory purpose from children
+        kind_counts = Counter(digest.get("kind", "unknown") for digest in child_digests)
+        dominant_kind = kind_counts.most_common(1)[0][0]
         
-        if child_summaries:
-            # Use the first few child summaries
-            combined = "".join(child_summaries[:3])
-            if child_count > 3:
-                return f"+ {child_count} *P!W{combined}I"
-            else:
-                return f"+{combined}"
+        # Generate contextual summary
+        if dominant_kind == "service":
+            summary = f"包含 {child_count} 个业务服务模块"
+        elif dominant_kind == "lib":
+            summary = f"包含 {child_count} 个工具库和通用组件"
+        elif dominant_kind == "test":
+            summary = f"包含 {child_count} 个测试模块"
+        elif dominant_kind == "ui":
+            summary = f"包含 {child_count} 个用户界面组件"
+        elif dominant_kind == "config":
+            summary = f"包含 {child_count} 个配置相关模块"
         else:
-            return f"+ {child_count} *P�U� {file_count} *������U"
-    
-    def _aggregate_capabilities(self, child_digests: List[Dict[str, Any]]) -> List[str]:
-        """Aggregate capabilities from children"""
+            summary = f"包含 {child_count} 个子模块"
+        
+        # Add key capabilities if available
         all_capabilities = []
+        for digest in child_digests:
+            capabilities = digest.get("capabilities", [])
+            all_capabilities.extend(capabilities[:2])  # Top 2 from each
         
-        for child in child_digests:
-            capabilities = child.get("capabilities", [])
+        if all_capabilities:
+            unique_capabilities = list(set(all_capabilities))[:3]  # Top 3 unique
+            summary += f"，主要提供：{' | '.join(unique_capabilities)}"
+        
+        # Add child module names
+        if child_count <= 3:
+            summary += f"（{' | '.join(child_names)}）"
+        else:
+            summary += f"（包括 {' | '.join(child_names[:3])} 等）"
+        
+        return summary
+    
+    def _merge_capabilities(self, child_digests: List[Dict[str, Any]]) -> List[str]:
+        """Merge capabilities from child directories.
+        
+        Args:
+            child_digests: Child directory digests
+            
+        Returns:
+            Merged list of capabilities
+        """
+        all_capabilities = []
+        capability_counts = Counter()
+        
+        for digest in child_digests:
+            capabilities = digest.get("capabilities", [])
             all_capabilities.extend(capabilities)
+            for cap in capabilities:
+                capability_counts[cap] += 1
         
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_capabilities = []
-        for cap in all_capabilities:
-            if cap not in seen:
-                seen.add(cap)
-                unique_capabilities.append(cap)
+        # Return most common capabilities, avoiding duplicates
+        merged_capabilities = []
+        seen_keywords = set()
         
-        # Return top 10 most relevant capabilities
-        return unique_capabilities[:10]
+        for capability, count in capability_counts.most_common():
+            # Simple deduplication by checking key words
+            key_words = set(capability.lower().split())
+            if not key_words.intersection(seen_keywords):
+                merged_capabilities.append(capability)
+                seen_keywords.update(key_words)
+                
+                if len(merged_capabilities) >= 8:  # Limit to 8 capabilities
+                    break
+        
+        return merged_capabilities
     
-    def _aggregate_dependencies(self, child_digests: List[Dict[str, Any]]) -> Dict[str, List[str]]:
-        """Aggregate dependencies from children"""
-        internal_deps = set()
-        external_deps = set()
+    def _merge_public_interfaces(self, child_digests: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Merge public interfaces from child directories.
         
-        for child in child_digests:
-            deps = child.get("dependencies", {})
+        Args:
+            child_digests: Child directory digests
             
-            internal_deps.update(deps.get("internal", []))
-            external_deps.update(deps.get("external", []))
+        Returns:
+            Merged public interfaces
+        """
+        merged_interfaces: Dict[str, List[Dict[str, Any]]] = {
+            "http": [],
+            "rpc": [],
+            "cli": [],
+            "api": []
+        }
         
-        result = {}
+        for digest in child_digests:
+            interfaces = digest.get("public_interfaces", {})
+            
+            for interface_type, interface_list in interfaces.items():
+                if interface_type in merged_interfaces and interface_list:
+                    merged_interfaces[interface_type].extend(interface_list)
+        
+        # Remove duplicates and limit count
+        for interface_type in merged_interfaces:
+            # Simple deduplication by converting to string and back
+            seen = set()
+            unique_interfaces = []
+            
+            for interface in merged_interfaces[interface_type]:
+                interface_key = str(sorted(interface.items()))
+                if interface_key not in seen:
+                    seen.add(interface_key)
+                    unique_interfaces.append(interface)
+                    
+                if len(unique_interfaces) >= 10:  # Limit per type
+                    break
+            
+            merged_interfaces[interface_type] = unique_interfaces
+        
+        # Remove empty interface types
+        return {k: v for k, v in merged_interfaces.items() if v}
+    
+    def _merge_dependencies(self, child_digests: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+        """Merge dependencies from child directories.
+        
+        Args:
+            child_digests: Child directory digests
+            
+        Returns:
+            Merged dependencies
+        """
+        internal_deps: Set[str] = set()
+        external_deps: Set[str] = set()
+        
+        for digest in child_digests:
+            dependencies = digest.get("dependencies", {})
+            
+            internal_deps.update(dependencies.get("internal", []))
+            external_deps.update(dependencies.get("external", []))
+        
+        merged_deps = {}
         if internal_deps:
-            result["internal"] = sorted(list(internal_deps))
+            merged_deps["internal"] = sorted(list(internal_deps))
         if external_deps:
-            result["external"] = sorted(list(external_deps))
-        
-        return result
-    
-    def _aggregate_public_interfaces(self, child_digests: List[Dict[str, Any]]) -> Dict[str, List[Dict]]:
-        """Aggregate public interfaces from children"""
-        interfaces = {}
-        
-        for child in child_digests:
-            child_interfaces = child.get("public_interfaces", {})
+            merged_deps["external"] = sorted(list(external_deps))
             
-            for interface_type, interface_list in child_interfaces.items():
-                if interface_type not in interfaces:
-                    interfaces[interface_type] = []
-                interfaces[interface_type].extend(interface_list)
-        
-        return interfaces
+        return merged_deps
     
-    def _aggregate_configuration(self, child_digests: List[Dict[str, Any]]) -> Dict[str, List[str]]:
-        """Aggregate configuration from children"""
-        env_vars = set()
-        config_files = set()
+    def _merge_configuration(self, child_digests: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+        """Merge configuration from child directories.
         
-        for child in child_digests:
-            config = child.get("configuration", {})
+        Args:
+            child_digests: Child directory digests
             
-            env_vars.update(config.get("env", []))
-            config_files.update(config.get("files", []))
+        Returns:
+            Merged configuration
+        """
+        env_vars: Set[str] = set()
+        config_files: Set[str] = set()
         
-        result = {}
+        for digest in child_digests:
+            configuration = digest.get("configuration", {})
+            
+            env_vars.update(configuration.get("env", []))
+            config_files.update(configuration.get("files", []))
+        
+        merged_config = {}
         if env_vars:
-            result["env"] = sorted(list(env_vars))
+            merged_config["env"] = sorted(list(env_vars))
         if config_files:
-            result["files"] = sorted(list(config_files))
-        
-        return result
+            merged_config["files"] = sorted(list(config_files))
+            
+        return merged_config
     
-    def _aggregate_risks(self, child_digests: List[Dict[str, Any]]) -> List[str]:
-        """Aggregate risks from children"""
-        all_risks = set()
+    def _merge_risks(self, child_digests: List[Dict[str, Any]]) -> List[str]:
+        """Merge risks from child directories.
         
-        for child in child_digests:
-            risks = child.get("risks", [])
-            all_risks.update(risks)
+        Args:
+            child_digests: Child directory digests
+            
+        Returns:
+            Merged list of risks
+        """
+        risk_counts = Counter()
         
-        return sorted(list(all_risks))
+        for digest in child_digests:
+            risks = digest.get("risks", [])
+            for risk in risks:
+                risk_counts[risk] += 1
+        
+        # Return risks mentioned by multiple children or high-priority ones
+        merged_risks = []
+        for risk, count in risk_counts.most_common():
+            if count > 1 or len(merged_risks) < 3:  # Multi-mention or top 3
+                merged_risks.append(risk)
+                
+            if len(merged_risks) >= 6:  # Limit to 6 risks
+                break
+        
+        return merged_risks
     
-    def _collect_evidence(
-        self,
-        directory_info: Dict[str, Any],
-        child_digests: List[Dict[str, Any]]
-    ) -> Dict[str, List[str]]:
-        """Collect evidence files"""
-        files = []
+    def _create_evidence(self, child_digests: List[Dict[str, Any]], 
+                        direct_files_info: Optional[Dict[str, Any]]) -> Dict[str, List[str]]:
+        """Create evidence for aggregated directory.
         
-        # Add direct files
-        for file_info in directory_info.get("files", []):
-            files.append(file_info["name"])
+        Args:
+            child_digests: Child directory digests
+            direct_files_info: Direct files information
+            
+        Returns:
+            Evidence dictionary
+        """
+        evidence_files = []
         
-        # Add child evidence
-        for child in child_digests:
-            child_evidence = child.get("evidence", {}).get("files", [])
-            files.extend(child_evidence)
+        # Add files from children (digest.json files)
+        for digest in child_digests:
+            child_path = digest.get("path", "")
+            if child_path:
+                evidence_files.append(f"{child_path}/digest.json")
         
-        return {"files": files[:20]}  # Limit to 20 files
+        # Add direct files if any
+        if direct_files_info:
+            for file_info in direct_files_info.get("files", []):
+                file_path = file_info.get("path", "")
+                if file_path:
+                    evidence_files.append(file_path)
+        
+        return {"files": evidence_files}
     
-    def _calculate_confidence(
-        self,
-        directory_info: Dict[str, Any],
-        child_digests: List[Dict[str, Any]]
-    ) -> int:
-        """Calculate confidence level"""
+    def _calculate_aggregate_confidence(self, child_digests: List[Dict[str, Any]]) -> int:
+        """Calculate aggregate confidence score.
         
-        # Base confidence
-        confidence = 50
+        Args:
+            child_digests: Child directory digests
+            
+        Returns:
+            Aggregate confidence score (0-100)
+        """
+        if not child_digests:
+            return 30  # Low confidence for empty aggregation
         
-        # Increase if we have child digests
-        if child_digests:
-            child_confidences = [child.get("confidence", 50) for child in child_digests]
-            avg_child_confidence = sum(child_confidences) / len(child_confidences)
-            confidence = int(avg_child_confidence * 0.8)  # Slight reduction for aggregation
+        confidences = [digest.get("confidence", 50) for digest in child_digests]
         
-        # Increase if we have files
-        file_count = len(directory_info.get("files", []))
-        if file_count > 0:
-            confidence += min(file_count * 2, 20)  # Up to 20 points for files
+        # Weighted average with penalty for low confidence children
+        avg_confidence = sum(confidences) / len(confidences)
+        
+        # Penalty for inconsistent confidence (high variance)
+        if len(confidences) > 1:
+            variance = sum((c - avg_confidence) ** 2 for c in confidences) / len(confidences)
+            variance_penalty = min(variance / 100, 20)  # Max 20 point penalty
+            avg_confidence -= variance_penalty
+        
+        # Bonus for having more children (more evidence)
+        child_count_bonus = min(len(child_digests) * 2, 10)  # Max 10 point bonus
+        avg_confidence += child_count_bonus
         
         # Ensure within bounds
-        return max(10, min(confidence, 95))  # Keep between 10-95
+        return max(0, min(100, int(avg_confidence)))
+    
+    def _clean_empty_fields(self, digest: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove empty fields from digest.
+        
+        Args:
+            digest: Digest dictionary
+            
+        Returns:
+            Cleaned digest dictionary
+        """
+        cleaned = {}
+        
+        for key, value in digest.items():
+            if isinstance(value, list) and not value:
+                continue  # Skip empty lists
+            elif isinstance(value, dict) and not value:
+                continue  # Skip empty dicts
+            elif value is None or value == "":
+                continue  # Skip None or empty strings
+            else:
+                cleaned[key] = value
+                
+        return cleaned

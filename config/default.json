@@ -55,7 +55,7 @@
   "api_options": {
     "model": "claude-3-sonnet",
     "max_tokens": 4000,
-    "append_system_prompt": "��JSONW�%<	Schema"
+    "append_system_prompt": "只输出JSON格式，严格按照Schema定义"
   },
   "cache_enabled": true,
   "parallel_workers": 1,
