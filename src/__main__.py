@@ -9,85 +9,82 @@ from typing import Optional
 
 import click
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.panel import Panel
 from rich.tree import Tree
+from rich.table import Table
+from rich.text import Text
 
-from . import analyzer
-from . import config as cfg
-from . import __version__
+from .config import ConfigManager
+from .analyzer import CodebaseAnalyzer, AnalysisError
+from .__version__ import __version__
 
 console = Console()
 
 
-def print_banner():
-    """Display the application banner"""
+def print_banner() -> None:
+    """Display the application banner."""
     banner_text = """
-= [bold blue]Digin[/bold blue] - AI-powered codebase archaeology tool
+🔍 [bold blue]Digin[/bold blue] - AI-powered codebase archaeology tool
 [dim]Deep dive into your code and understand it like never before[/dim]
     """
     console.print(Panel(banner_text.strip(), style="blue"))
 
 
-def print_version():
-    """Display version information"""
-    console.print(f"[bold]digin[/bold] version [green]{__version__.__version__}[/green]")
-
-
 @click.command()
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
 @click.option(
-    "--provider",
-    "-p",
+    "--provider", "-p",
     type=click.Choice(["claude", "gemini"], case_sensitive=False),
-    default="claude",
-    help="AI provider to use for analysis (claude or gemini)",
+    help="AI provider to use for analysis"
 )
 @click.option(
-    "--config",
-    "-c",
+    "--config", "-c",
     type=click.Path(exists=True, path_type=Path),
-    help="Path to custom configuration file",
+    help="Path to custom configuration file"
 )
 @click.option(
-    "--force",
-    "-f",
+    "--force", "-f",
     is_flag=True,
-    help="Force refresh, ignore cache",
+    help="Force refresh, ignore cache"
 )
 @click.option(
-    "--verbose",
-    "-v",
+    "--verbose", "-v",
     is_flag=True,
-    help="Enable verbose output",
+    help="Enable verbose output"
 )
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Show what would be analyzed without actually running",
+    help="Show what would be analyzed without running"
 )
 @click.option(
     "--output-format",
     type=click.Choice(["json", "tree", "summary"], case_sensitive=False),
     default="summary",
-    help="Output format",
+    help="Output format"
 )
 @click.option(
-    "--quiet",
-    "-q",
+    "--quiet", "-q",
     is_flag=True,
-    help="Suppress non-essential output",
+    help="Suppress non-essential output"
 )
-@click.version_option(version=__version__.__version__, prog_name="digin")
+@click.option(
+    "--clear-cache",
+    is_flag=True,
+    help="Clear cache before analysis"
+)
+@click.version_option(version=__version__, prog_name="digin")
 def main(
     path: Path,
-    provider: str,
+    provider: Optional[str],
     config: Optional[Path],
     force: bool,
     verbose: bool,
     dry_run: bool,
     output_format: str,
     quiet: bool,
+    clear_cache: bool,
 ) -> None:
     """
     Analyze a codebase and generate structured understanding.
@@ -95,20 +92,15 @@ def main(
     PATH: Directory to analyze (defaults to current directory)
     """
     try:
-        # Configure console output
+        # Configure console
         if quiet:
             console.quiet = True
         
         if not quiet:
             print_banner()
         
-        if verbose:
-            console.print(f"[dim]Analyzing path: {path.absolute()}[/dim]")
-            console.print(f"[dim]Provider: {provider}[/dim]")
-            console.print(f"[dim]Force refresh: {force}[/dim]")
-        
         # Load configuration
-        config_manager = cfg.ConfigManager(config_file=config)
+        config_manager = ConfigManager(config_file=config)
         settings = config_manager.load_config()
         
         # Override settings with CLI options
@@ -119,49 +111,85 @@ def main(
         if force:
             settings.cache_enabled = False
         
+        if verbose and not quiet:
+            console.print(f"[dim]Analyzing: {path.absolute()}[/dim]")
+            console.print(f"[dim]Provider: {settings.api_provider}[/dim]")
+            console.print(f"[dim]Cache enabled: {settings.cache_enabled}[/dim]")
+        
         # Validate target directory
         if not path.is_dir():
             console.print(f"[red]Error: {path} is not a directory[/red]")
             sys.exit(1)
         
-        # Check if AI CLI tool is available
-        if not _check_ai_cli_available(settings.api_provider):
+        # Initialize analyzer
+        analyzer = CodebaseAnalyzer(settings)
+        
+        # Clear cache if requested
+        if clear_cache:
+            analyzer.clear_cache(path)
+            if not quiet:
+                console.print("[yellow]Cache cleared[/yellow]")
+        
+        # Check AI CLI availability
+        if not analyzer.ai_client.is_available():
             console.print(
-                f"[red]Error: {settings.api_provider} CLI not found. "
-                f"Please install {settings.api_provider} CLI tool.[/red]"
+                f"[red]Error: {settings.api_provider} CLI not found.[/red]\n"
+                f"Please install the {settings.api_provider} CLI tool."
             )
             sys.exit(1)
         
-        if verbose:
-            console.print(f"[dim]Configuration loaded successfully[/dim]")
-        
-        # Initialize analyzer
-        code_analyzer = analyzer.CodebaseAnalyzer(settings)
-        
+        # Handle dry run
         if dry_run:
-            _show_dry_run(code_analyzer, path, verbose)
+            _show_dry_run(analyzer, path, verbose)
             return
         
         # Run analysis
         if not quiet:
             console.print(f"\n[bold]Starting analysis of [green]{path.name}[/green]...[/bold]")
         
+        # Progress tracking
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
+            BarColumn() if not verbose else BarColumn(bar_width=None),
+            TaskProgressColumn(),
             console=console,
             disable=quiet or verbose,
         ) as progress:
-            task = progress.add_task("Analyzing codebase...", total=None)
+            task = progress.add_task("Initializing...", total=100)
             
             try:
-                results = code_analyzer.analyze(path)
-                progress.update(task, description="Analysis complete")
+                # Get analysis plan
+                dry_run_info = analyzer.dry_run(path)
+                total_dirs = dry_run_info["total_directories"]
+                
+                progress.update(task, description=f"Analyzing {total_dirs} directories...", total=total_dirs)
+                
+                # Run analysis with progress updates
+                class ProgressAnalyzer(CodebaseAnalyzer):
+                    def _analyze_directory(self, directory, root_path, completed_digests):
+                        # Update progress
+                        completed = len(completed_digests)
+                        progress.update(task, completed=completed, 
+                                      description=f"Analyzing {directory.name}...")
+                        return super()._analyze_directory(directory, root_path, completed_digests)
+                
+                # Use progress-aware analyzer
+                progress_analyzer = ProgressAnalyzer(settings)
+                progress_analyzer.ai_client = analyzer.ai_client
+                progress_analyzer.cache_manager = analyzer.cache_manager
+                
+                results = progress_analyzer.analyze(path)
+                progress.update(task, completed=total_dirs, description="Analysis complete")
+                
+                # Update stats
+                analyzer.stats = progress_analyzer.stats
+                
             except KeyboardInterrupt:
                 progress.update(task, description="Analysis interrupted")
                 console.print("\n[yellow]Analysis interrupted by user[/yellow]")
                 sys.exit(1)
-            except Exception as e:
+            except AnalysisError as e:
                 progress.update(task, description="Analysis failed")
                 console.print(f"\n[red]Analysis failed: {e}[/red]")
                 if verbose:
@@ -170,14 +198,15 @@ def main(
                 sys.exit(1)
         
         # Display results
-        if not quiet:
+        if not quiet and results:
             _display_results(results, output_format, verbose)
         
-        # Show summary statistics
-        if not quiet and results:
-            _show_statistics(results)
+        # Show statistics
+        if not quiet:
+            _show_statistics(analyzer.get_analysis_stats())
         
-        console.print("\n[green] Analysis complete![/green]")
+        if not quiet:
+            console.print("\n✅ [green]Analysis complete![/green]")
         
     except Exception as e:
         console.print(f"[red]Fatal error: {e}[/red]")
@@ -187,62 +216,57 @@ def main(
         sys.exit(1)
 
 
-def _check_ai_cli_available(provider: str) -> bool:
-    """Check if the specified AI CLI tool is available"""
-    import subprocess
+def _show_dry_run(analyzer: CodebaseAnalyzer, path: Path, verbose: bool) -> None:
+    """Show dry run analysis plan."""
+    console.print("\n[bold yellow]🔍 Dry Run - Analysis Plan[/bold yellow]")
     
     try:
-        result = subprocess.run(
-            [provider, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
-def _show_dry_run(analyzer: "analyzer.CodebaseAnalyzer", path: Path, verbose: bool) -> None:
-    """Show what would be analyzed in dry-run mode"""
-    console.print("\n[bold yellow]= Dry Run - Analysis Plan[/bold yellow]")
-    
-    try:
-        # Get directories that would be analyzed
-        traverser = analyzer.get_traverser()
-        directories = traverser.get_analysis_order(path)
+        dry_run_info = analyzer.dry_run(path)
         
-        tree = Tree(f"[bold]{path.name}[/bold] ([dim]{len(directories)} directories[/dim])")
+        # Create summary table
+        table = Table(title="Analysis Overview", show_header=True, header_style="bold cyan")
+        table.add_column("Metric", style="dim", width=20)
+        table.add_column("Value", style="bold")
         
-        for directory in directories[:10]:  # Show first 10
-            rel_path = directory.relative_to(path)
-            tree.add(f"[green]{rel_path}[/green]")
+        table.add_row("Total Directories", str(dry_run_info["total_directories"]))
+        table.add_row("Leaf Directories", str(dry_run_info["leaf_directories"]))
+        table.add_row("Parent Directories", str(dry_run_info["parent_directories"]))
+        table.add_row("Estimated Files", str(dry_run_info["estimated_files"]))
+        table.add_row("AI Provider", dry_run_info["ai_provider"])
+        table.add_row("Cache Enabled", "Yes" if dry_run_info["cache_enabled"] else "No")
         
-        if len(directories) > 10:
-            tree.add(f"[dim]... and {len(directories) - 10} more directories[/dim]")
+        console.print(table)
         
-        console.print(tree)
+        # Show directory tree (first 10 directories)
+        if verbose and dry_run_info["analysis_order"]:
+            console.print("\n[bold]Analysis Order (first 10):[/bold]")
+            tree = Tree(f"📁 {path.name}")
+            
+            for i, dir_path in enumerate(dry_run_info["analysis_order"][:10]):
+                rel_path = Path(dir_path).relative_to(path) if Path(dir_path) != path else Path(".")
+                if i < dry_run_info["leaf_directories"]:
+                    tree.add(f"🍃 [green]{rel_path}[/green] (leaf)")
+                else:
+                    tree.add(f"📂 [blue]{rel_path}[/blue] (parent)")
+            
+            if len(dry_run_info["analysis_order"]) > 10:
+                tree.add(f"[dim]... and {len(dry_run_info['analysis_order']) - 10} more[/dim]")
+            
+            console.print(tree)
         
-        if verbose:
-            console.print(f"\n[dim]Configuration:[/dim]")
-            settings = analyzer.settings
-            console.print(f"  Provider: [cyan]{settings.api_provider}[/cyan]")
-            console.print(f"  Cache enabled: [cyan]{settings.cache_enabled}[/cyan]")
-            console.print(f"  Ignored directories: [dim]{', '.join(settings.ignore_dirs)}[/dim]")
-        
-        console.print(f"\n[yellow]Would analyze {len(directories)} directories[/yellow]")
+        console.print(f"\n[yellow]Would analyze {dry_run_info['total_directories']} directories with {dry_run_info['leaf_directories']} AI calls[/yellow]")
         
     except Exception as e:
         console.print(f"[red]Error during dry-run: {e}[/red]")
 
 
 def _display_results(results: dict, format_type: str, verbose: bool) -> None:
-    """Display analysis results in the specified format"""
+    """Display analysis results."""
     if not results:
         console.print("[yellow]No results to display[/yellow]")
         return
     
-    console.print(f"\n[bold]Analysis Results[/bold]")
+    console.print(f"\n[bold]📊 Analysis Results[/bold]")
     
     if format_type == "json":
         import json
@@ -256,58 +280,118 @@ def _display_results(results: dict, format_type: str, verbose: bool) -> None:
 
 
 def _display_results_as_tree(results: dict) -> None:
-    """Display results as a tree structure"""
-    tree = Tree(f"[bold]{results.get('name', 'Project')}[/bold]")
+    """Display results as tree structure."""
+    project_name = results.get("name", "Project")
+    tree = Tree(f"📁 [bold]{project_name}[/bold]")
     
     if "summary" in results:
-        tree.add(f"[green]Summary:[/green] {results['summary']}")
+        tree.add(f"📝 [green]Summary:[/green] {results['summary']}")
     
     if "kind" in results:
-        tree.add(f"[blue]Type:[/blue] {results['kind']}")
+        kind_emoji = {
+            "service": "⚙️", "lib": "📚", "ui": "🎨", "infra": "🏗️",
+            "config": "⚙️", "test": "🧪", "docs": "📖"
+        }
+        emoji = kind_emoji.get(results["kind"], "❓")
+        tree.add(f"{emoji} [blue]Type:[/blue] {results['kind']}")
     
     if "capabilities" in results and results["capabilities"]:
-        capabilities_node = tree.add("[yellow]Capabilities:[/yellow]")
+        caps_node = tree.add("🎯 [yellow]Capabilities:[/yellow]")
         for cap in results["capabilities"][:5]:  # Show first 5
-            capabilities_node.add(f"" {cap}")
+            caps_node.add(f"• {cap}")
+    
+    if "dependencies" in results:
+        deps = results["dependencies"]
+        if deps.get("external"):
+            deps_node = tree.add("📦 [cyan]External Dependencies:[/cyan]")
+            for dep in deps["external"][:5]:  # Show first 5
+                deps_node.add(f"• {dep}")
     
     console.print(tree)
 
 
 def _display_results_summary(results: dict, verbose: bool) -> None:
-    """Display results as a formatted summary"""
+    """Display results as formatted summary."""
     if "name" in results:
-        console.print(f"[bold blue]=� {results['name']}[/bold blue]")
+        console.print(f"📁 [bold blue]{results['name']}[/bold blue]")
     
     if "summary" in results:
-        console.print(f"[green]Summary:[/green] {results['summary']}")
+        console.print(f"\n📝 [green]Summary:[/green] {results['summary']}")
     
     if "kind" in results:
-        console.print(f"[blue]Type:[/blue] [cyan]{results['kind']}[/cyan]")
+        kind_styles = {
+            "service": "bold red", "lib": "bold blue", "ui": "bold magenta",
+            "infra": "bold yellow", "config": "bold cyan", "test": "bold green"
+        }
+        style = kind_styles.get(results["kind"], "bold white")
+        console.print(f"🏷️  [blue]Type:[/blue] [{style}]{results['kind']}[/{style}]")
     
     if "capabilities" in results and results["capabilities"]:
-        console.print(f"[yellow]Capabilities:[/yellow]")
+        console.print(f"\n🎯 [yellow]Capabilities:[/yellow]")
         for cap in results["capabilities"]:
-            console.print(f"  " {cap}")
+            console.print(f"   • {cap}")
     
-    if verbose and "confidence" in results:
-        confidence = results["confidence"]
-        color = "green" if confidence >= 80 else "yellow" if confidence >= 60 else "red"
-        console.print(f"[{color}]Confidence:[/{color}] {confidence}%")
+    if "dependencies" in results and results["dependencies"]:
+        deps = results["dependencies"]
+        if deps.get("external"):
+            console.print(f"\n📦 [cyan]External Dependencies:[/cyan]")
+            for dep in deps["external"][:10]:  # Show first 10
+                console.print(f"   • {dep}")
+    
+    if verbose:
+        if "confidence" in results:
+            confidence = results["confidence"]
+            if confidence >= 80:
+                color = "green"
+                icon = "✅"
+            elif confidence >= 60:
+                color = "yellow" 
+                icon = "⚠️"
+            else:
+                color = "red"
+                icon = "❌"
+            console.print(f"\n{icon} [blue]Confidence:[/blue] [{color}]{confidence}%[/{color}]")
+        
+        if "risks" in results and results["risks"]:
+            console.print(f"\n⚠️  [red]Potential Risks:[/red]")
+            for risk in results["risks"][:5]:
+                console.print(f"   • {risk}")
 
 
-def _show_statistics(results: dict) -> None:
-    """Show analysis statistics"""
-    stats = []
+def _show_statistics(stats: dict) -> None:
+    """Show analysis statistics."""
+    if not stats:
+        return
     
-    if "analyzed_at" in results:
-        stats.append(f"Analyzed: {results['analyzed_at']}")
+    # Create stats table
+    table = Table(title="📈 Analysis Statistics", show_header=False, box=None)
+    table.add_column("Metric", style="dim")
+    table.add_column("Value", style="bold")
     
-    if "evidence" in results and "files" in results["evidence"]:
-        file_count = len(results["evidence"]["files"])
-        stats.append(f"Files analyzed: {file_count}")
+    if stats.get("directories_analyzed"):
+        table.add_row("Directories analyzed", str(stats["directories_analyzed"]))
     
-    if stats:
-        console.print(f"\n[dim]{' | '.join(stats)}[/dim]")
+    if stats.get("total_files"):
+        table.add_row("Files processed", str(stats["total_files"]))
+    
+    if stats.get("ai_calls"):
+        table.add_row("AI calls made", str(stats["ai_calls"]))
+    
+    if stats.get("cache_hits") or stats.get("cache_misses"):
+        cache_rate = stats.get("cache_hit_rate", 0)
+        table.add_row("Cache hit rate", f"{cache_rate:.1f}%")
+    
+    if stats.get("duration_seconds"):
+        duration = stats["duration_seconds"]
+        if duration < 60:
+            table.add_row("Duration", f"{duration:.1f} seconds")
+        else:
+            table.add_row("Duration", f"{duration/60:.1f} minutes")
+    
+    if stats.get("errors"):
+        table.add_row("Errors", str(stats["errors"]))
+    
+    console.print(table)
 
 
 if __name__ == "__main__":

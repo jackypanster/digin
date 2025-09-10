@@ -1,6 +1,4 @@
-"""
-Cache management for analysis results
-"""
+"""Caching system for digest results to avoid redundant AI analysis."""
 
 import hashlib
 import json
@@ -11,181 +9,262 @@ from .config import DigginSettings
 
 
 class CacheManager:
-    """Manages caching of analysis results"""
+    """Manages digest caching using file content hashing."""
     
     def __init__(self, settings: DigginSettings):
+        """Initialize cache manager.
+        
+        Args:
+            settings: Configuration settings
+        """
         self.settings = settings
+        self.cache_enabled = settings.cache_enabled
     
     def get_cached_digest(self, directory: Path) -> Optional[Dict[str, Any]]:
-        """
-        Get cached digest for directory if valid
+        """Get cached digest for directory if still valid.
         
         Args:
             directory: Directory to check cache for
             
         Returns:
-            Cached digest or None if not found/invalid
+            Cached digest dictionary or None if not cached/invalid
         """
-        if not self.settings.cache_enabled:
+        if not self.cache_enabled:
             return None
-        
-        digest_file = directory / "digest.json"
-        hash_file = directory / ".hash"
+            
+        digest_path = directory / "digest.json"
+        hash_path = directory / ".digin_hash"
         
         # Check if both files exist
-        if not (digest_file.exists() and hash_file.exists()):
+        if not (digest_path.exists() and hash_path.exists()):
             return None
         
         try:
-            # Load cached hash
-            with open(hash_file, 'r') as f:
-                cached_hash = f.read().strip()
+            # Load stored hash
+            with open(hash_path, 'r', encoding='utf-8') as f:
+                stored_hash = f.read().strip()
             
             # Calculate current hash
             current_hash = self._calculate_directory_hash(directory)
             
-            # If hashes match, load digest
-            if cached_hash == current_hash:
-                with open(digest_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+            # Compare hashes
+            if stored_hash != current_hash:
+                # Content changed, cache invalid
+                return None
             
-            return None
-        
-        except (IOError, json.JSONDecodeError, ValueError):
-            # If any error occurs, treat as cache miss
+            # Load and return cached digest
+            with open(digest_path, 'r', encoding='utf-8') as f:
+                digest = json.load(f)
+            
+            if self.settings.verbose:
+                print(f"Cache hit for {directory}")
+            
+            return digest
+            
+        except (FileNotFoundError, json.JSONDecodeError, PermissionError) as e:
+            if self.settings.verbose:
+                print(f"Cache load failed for {directory}: {e}")
             return None
     
-    def save_digest(self, directory: Path, digest: Dict[str, Any]) -> bool:
-        """
-        Save digest and hash for directory
+    def save_digest(self, directory: Path, digest: Dict[str, Any]) -> None:
+        """Save digest and hash to cache.
         
         Args:
-            directory: Directory to save cache for
-            digest: Digest data to save
-            
-        Returns:
-            True if saved successfully
+            directory: Directory being cached
+            digest: Analysis digest to save
         """
-        if not self.settings.cache_enabled:
-            return False
+        if not self.cache_enabled:
+            return
         
         try:
             # Save digest
-            digest_file = directory / "digest.json"
-            with open(digest_file, 'w', encoding='utf-8') as f:
+            digest_path = directory / "digest.json"
+            with open(digest_path, 'w', encoding='utf-8') as f:
                 json.dump(digest, f, indent=2, ensure_ascii=False)
             
             # Save hash
-            hash_file = directory / ".hash"
-            current_hash = self._calculate_directory_hash(directory)
-            with open(hash_file, 'w') as f:
-                f.write(current_hash)
+            directory_hash = self._calculate_directory_hash(directory)
+            hash_path = directory / ".digin_hash"
+            with open(hash_path, 'w', encoding='utf-8') as f:
+                f.write(directory_hash)
             
-            return True
-        
-        except IOError:
             if self.settings.verbose:
-                print(f"Failed to save cache for {directory}")
-            return False
+                print(f"Cached digest for {directory}")
+                
+        except (PermissionError, OSError) as e:
+            if self.settings.verbose:
+                print(f"Cache save failed for {directory}: {e}")
+    
+    def clear_cache(self, directory: Path, recursive: bool = False) -> None:
+        """Clear cache files for directory.
+        
+        Args:
+            directory: Directory to clear cache for
+            recursive: Whether to clear caches recursively
+        """
+        def clear_single_dir(dir_path: Path) -> None:
+            """Clear cache for a single directory."""
+            digest_path = dir_path / "digest.json"
+            hash_path = dir_path / ".digin_hash"
+            
+            try:
+                if digest_path.exists():
+                    digest_path.unlink()
+                if hash_path.exists():
+                    hash_path.unlink()
+            except PermissionError:
+                pass
+        
+        clear_single_dir(directory)
+        
+        if recursive:
+            for item in directory.rglob("*"):
+                if item.is_dir():
+                    clear_single_dir(item)
     
     def _calculate_directory_hash(self, directory: Path) -> str:
-        """
-        Calculate hash for directory contents
+        """Calculate hash for directory contents.
         
         Args:
             directory: Directory to hash
             
         Returns:
-            Hash string
+            SHA-256 hash of directory contents
         """
-        hasher = hashlib.md5()
+        hasher = hashlib.sha256()
+        
+        # Get all relevant files sorted by path for consistent hashing
+        files_to_hash = []
         
         try:
-            # Get all files in directory (excluding cache files)
-            files = []
             for item in directory.iterdir():
-                if item.is_file() and item.name not in {".hash", "digest.json"}:
-                    files.append(item)
-            
-            # Sort for consistent hashing
-            files.sort(key=lambda x: x.name)
-            
-            # Hash file names and modification times
-            for file_path in files:
-                try:
-                    stat = file_path.stat()
-                    hasher.update(file_path.name.encode('utf-8'))
-                    hasher.update(str(stat.st_size).encode('utf-8'))
-                    hasher.update(str(int(stat.st_mtime)).encode('utf-8'))
-                except OSError:
-                    # Skip files we can't access
-                    continue
-            
-            return hasher.hexdigest()
+                if item.is_file() and not self._should_ignore_for_hash(item):
+                    files_to_hash.append(item)
+        except PermissionError:
+            pass
         
-        except OSError:
-            # If we can't read directory, return empty hash
-            return ""
-    
-    def clear_cache(self, directory: Path) -> bool:
-        """
-        Clear cache files for directory
+        files_to_hash.sort(key=lambda p: str(p))
         
-        Args:
-            directory: Directory to clear cache for
-            
-        Returns:
-            True if cleared successfully
-        """
-        try:
-            digest_file = directory / "digest.json"
-            hash_file = directory / ".hash"
-            
-            success = True
-            if digest_file.exists():
-                try:
-                    digest_file.unlink()
-                except OSError:
-                    success = False
-            
-            if hash_file.exists():
-                try:
-                    hash_file.unlink()
-                except OSError:
-                    success = False
-            
-            return success
-        
-        except Exception:
-            return False
-    
-    def clear_all_cache(self, root_directory: Path) -> int:
-        """
-        Clear all cache files recursively
-        
-        Args:
-            root_directory: Root directory to start clearing from
-            
-        Returns:
-            Number of cache entries cleared
-        """
-        cleared = 0
-        
-        def clear_recursive(directory: Path):
-            nonlocal cleared
-            
+        # Hash each file's metadata and content
+        for file_path in files_to_hash:
             try:
-                if self.clear_cache(directory):
-                    cleared += 1
+                # Include file path relative to directory
+                rel_path = file_path.relative_to(directory)
+                hasher.update(str(rel_path).encode('utf-8'))
                 
-                # Recurse into subdirectories
-                for item in directory.iterdir():
-                    if item.is_dir():
-                        clear_recursive(item)
-            
-            except OSError:
-                # Skip directories we can't access
-                pass
+                # Include file metadata
+                stat = file_path.stat()
+                hasher.update(str(stat.st_mtime).encode('utf-8'))
+                hasher.update(str(stat.st_size).encode('utf-8'))
+                
+                # For small text files, include content hash
+                if (stat.st_size <= 8192 and 
+                    self._is_text_file(file_path)):
+                    try:
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                            hasher.update(content)
+                    except (UnicodeDecodeError, PermissionError):
+                        # Just use metadata if content can't be read
+                        pass
+                        
+            except (OSError, PermissionError):
+                continue
         
-        clear_recursive(root_directory)
-        return cleared
+        return hasher.hexdigest()
+    
+    def _should_ignore_for_hash(self, file_path: Path) -> bool:
+        """Check if file should be ignored when calculating hash.
+        
+        Args:
+            file_path: File to check
+            
+        Returns:
+            True if file should be ignored for hashing
+        """
+        file_name = file_path.name
+        
+        # Always ignore our own cache files
+        if file_name in ("digest.json", ".digin_hash"):
+            return True
+        
+        # Use same ignore logic as traverser
+        return self._should_ignore_file_by_patterns(file_path)
+    
+    def _should_ignore_file_by_patterns(self, file_path: Path) -> bool:
+        """Check file against ignore patterns."""
+        import fnmatch
+        
+        file_name = file_path.name
+        extension = file_path.suffix.lower()
+        
+        # Check against ignore patterns
+        for pattern in self.settings.ignore_files:
+            if fnmatch.fnmatch(file_name, pattern):
+                return True
+        
+        # Check if extension is in include list
+        if self.settings.include_extensions:
+            return extension not in self.settings.include_extensions
+            
+        return False
+    
+    def _is_text_file(self, file_path: Path) -> bool:
+        """Check if file is text file (for content hashing)."""
+        extension = file_path.suffix.lower()
+        
+        # Check if extension is in our include list
+        if extension in self.settings.include_extensions:
+            return True
+        
+        # Check common text extensions
+        text_extensions = {
+            '.txt', '.md', '.rst', '.json', '.yaml', '.yml', '.xml', 
+            '.html', '.css', '.js', '.py', '.java', '.c', '.cpp', '.h'
+        }
+        
+        return extension in text_extensions
+    
+    def get_cache_stats(self, root_directory: Path) -> Dict[str, int]:
+        """Get cache statistics for directory tree.
+        
+        Args:
+            root_directory: Root directory to check
+            
+        Returns:
+            Dictionary with cache statistics
+        """
+        stats = {
+            "total_digests": 0,
+            "cached_digests": 0,
+            "invalid_caches": 0,
+            "missing_hashes": 0
+        }
+        
+        for directory in root_directory.rglob("*"):
+            if not directory.is_dir():
+                continue
+                
+            digest_path = directory / "digest.json"
+            hash_path = directory / ".digin_hash"
+            
+            if digest_path.exists():
+                stats["total_digests"] += 1
+                
+                if hash_path.exists():
+                    # Check if cache is valid
+                    try:
+                        with open(hash_path, 'r', encoding='utf-8') as f:
+                            stored_hash = f.read().strip()
+                        current_hash = self._calculate_directory_hash(directory)
+                        
+                        if stored_hash == current_hash:
+                            stats["cached_digests"] += 1
+                        else:
+                            stats["invalid_caches"] += 1
+                    except Exception:
+                        stats["invalid_caches"] += 1
+                else:
+                    stats["missing_hashes"] += 1
+        
+        return stats
