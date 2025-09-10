@@ -1,4 +1,14 @@
-"""Core codebase analyzer that orchestrates the analysis process."""
+"""總控分析器（Orchestrator）。
+
+核心流程：
+1) 用 DirectoryTraverser 生成「葉 → 父 → 根」的分析序列。
+2) 目錄級緩存命中即返回；未命中則：
+   - 葉子：AIClient 生成 digest.json；
+   - 父級：SummaryAggregator 聚合子摘要 + 本目錄直屬文件信息。
+3) 記錄統計（AI 調用、緩存命中/未命中、文件數、錯誤與耗時），並提供 dry_run 粗估。
+
+邊界與策略：不中斷失敗目錄，繼續分析；不執行用戶代碼，只基於文件/結構推理，降低風險與成本。
+"""
 
 import json
 import time

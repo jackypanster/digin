@@ -1,6 +1,14 @@
 """
-Digin - AI-powered codebase archaeology tool
-CLI entry point
+Digin 命令行入口。
+
+職責與業務邏輯：
+- 讀取與合併配置（default.json → 根目錄 .digin.json → CLI 覆蓋）。
+- 驗證目標路徑與 AI CLI 可用性（Claude/Gemini）。
+- 支持 dry-run 預覽：顯示葉/父目錄數、分析順序與粗略文件量估算。
+- 非 dry-run：用進度條執行“自底向上”分析，最後按 summary/tree/json 輸出並展示統計。
+- 常用開關：--force 取消緩存、--clear-cache 清理緩存、--provider 切換供應商、--verbose 詳細輸出。
+
+設計動機：將「人類上手陌生代碼」的路徑流程化、可視化，降低首次理解成本。
 """
 
 import sys

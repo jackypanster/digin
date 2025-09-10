@@ -1,4 +1,14 @@
-"""Summary aggregation for parent directories."""
+"""父級摘要聚合。
+
+核心規則：
+- 類型(kind)推斷：按子摘要統計（service/lib/test…）+ 特例（service+lib → infra）。
+- 摘要：描述子模塊數量、代表能力與樣例名稱，突出父目錄角色。
+- 合併：能力去重限量；公共接口分類合併（每類最多 10 條）；依賴/配置用集合去重；
+- 風險：按提及頻次排序選取；證據：子 `digest.json` + 直屬文件列表。
+- 置信度：均值 − 方差懲罰 + 子數量加成，最後截斷至 0–100。
+
+目標：讓父目錄像「主頁」一樣快速傳達重點，便於人快速掃描理解。
+"""
 
 from pathlib import Path
 from typing import Dict, Any, List, Set, Optional

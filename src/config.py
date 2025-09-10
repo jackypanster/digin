@@ -1,4 +1,11 @@
-"""Configuration management for digin."""
+"""配置管理與合併。
+
+來源順序：`config/default.json` → 根目錄 `.digin.json` → CLI 指定文件（後者覆蓋前者）。
+DigginSettings 包含忽略規則、AI 供應商與選項、併發、深度、是否緩存、最大文件大小等。
+提供 `get_max_file_size_bytes()`（人類可讀大小轉換）與 `save_config_template()`（輸出模板）。
+
+設計重點：可配置但有良好默認值，方便在不同代碼倉快速落地並保持一致性。
+"""
 
 import json
 from dataclasses import dataclass, field
