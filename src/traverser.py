@@ -30,23 +30,28 @@ class DirectoryTraverser:
         """
         leaf_dirs = []
         
-        for path in root_path.rglob("*"):
-            if not path.is_dir() or self._should_ignore_directory(path):
-                continue
-                
-            # Check if this directory has any non-ignored subdirectories
-            has_subdirs = False
+        def _scan_directory(directory: Path):
+            """Recursively scan directory, avoiding ignored ones."""
             try:
-                for child in path.iterdir():
-                    if (child.is_dir() and 
-                        not self._should_ignore_directory(child)):
-                        has_subdirs = True
-                        break
+                subdirs = []
+                for child in directory.iterdir():
+                    if child.is_dir() and not self._should_ignore_directory(child):
+                        subdirs.append(child)
             except PermissionError:
-                continue
-                
-            if not has_subdirs:
-                leaf_dirs.append(path)
+                return
+            
+            # If no subdirectories, this is a leaf
+            if not subdirs:
+                leaf_dirs.append(directory)
+                return
+            
+            # Otherwise, recursively scan subdirectories
+            for subdir in subdirs:
+                _scan_directory(subdir)
+        
+        # Start scanning from root, but check if root itself should be processed
+        if not self._should_ignore_directory(root_path):
+            _scan_directory(root_path)
                 
         return sorted(leaf_dirs)
     
@@ -192,6 +197,10 @@ class DirectoryTraverser:
         """
         dir_name = directory.name
         
+        # Check if it's a hidden directory (starts with .)
+        if self.settings.ignore_hidden and dir_name.startswith('.'):
+            return True
+        
         # Check against ignore patterns
         for pattern in self.settings.ignore_dirs:
             if fnmatch.fnmatch(dir_name, pattern):
@@ -210,6 +219,10 @@ class DirectoryTraverser:
         """
         file_name = file_path.name
         extension = file_path.suffix.lower()
+        
+        # Check if it's a hidden file (starts with .)
+        if self.settings.ignore_hidden and file_name.startswith('.'):
+            return True
         
         # Check against ignore patterns
         for pattern in self.settings.ignore_files:

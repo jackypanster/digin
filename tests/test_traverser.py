@@ -17,7 +17,7 @@ class TestDirectoryTraverser:
         return DigginSettings(
             ignore_dirs=["node_modules", ".git", "__pycache__"],
             ignore_files=["*.pyc", "*.log", ".DS_Store"],
-            include_extensions=[".py", ".js", ".md"],
+            include_extensions=[".py", ".js", ".md", ".json"],
             max_file_size="1MB"
         )
     
@@ -132,6 +132,38 @@ class TestDirectoryTraverser:
         assert not traverser._should_ignore_directory(Path("src"))
         assert not traverser._should_ignore_directory(Path("tests"))
     
+    def test_should_ignore_hidden_directories(self, traverser):
+        """Test hidden directory ignore logic."""
+        # Should ignore hidden directories when ignore_hidden=True (default)
+        assert traverser._should_ignore_directory(Path(".claude"))
+        assert traverser._should_ignore_directory(Path(".cursor"))
+        assert traverser._should_ignore_directory(Path(".git"))
+        assert traverser._should_ignore_directory(Path(".vscode"))
+        assert traverser._should_ignore_directory(Path(".idea"))
+        
+        # Should not ignore visible directories
+        assert not traverser._should_ignore_directory(Path("src"))
+        assert not traverser._should_ignore_directory(Path("docs"))
+        
+    def test_should_ignore_hidden_directories_disabled(self):
+        """Test hidden directories are included when ignore_hidden=False."""
+        settings = DigginSettings(
+            ignore_dirs=["node_modules", ".git", "__pycache__"],
+            ignore_files=["*.pyc", "*.log", ".DS_Store"],
+            include_extensions=[".py", ".js", ".md"],
+            ignore_hidden=False  # Disabled
+        )
+        traverser = DirectoryTraverser(settings)
+        
+        # Should not ignore hidden directories when ignore_hidden=False
+        assert not traverser._should_ignore_directory(Path(".claude"))
+        assert not traverser._should_ignore_directory(Path(".cursor"))
+        assert not traverser._should_ignore_directory(Path(".vscode"))
+        
+        # But still ignore explicitly listed directories
+        assert traverser._should_ignore_directory(Path(".git"))  # In ignore_dirs
+        assert traverser._should_ignore_directory(Path("node_modules"))
+    
     def test_should_ignore_file(self, traverser):
         """Test file ignore logic."""
         assert traverser._should_ignore_file(Path("test.pyc"))
@@ -146,6 +178,62 @@ class TestDirectoryTraverser:
         # Files not in include_extensions should be ignored
         assert traverser._should_ignore_file(Path("image.png"))
         assert traverser._should_ignore_file(Path("data.csv"))
+    
+    def test_should_ignore_hidden_files(self, traverser):
+        """Test hidden file ignore logic."""
+        # Should ignore hidden files when ignore_hidden=True (default)
+        assert traverser._should_ignore_file(Path(".DS_Store"))
+        assert traverser._should_ignore_file(Path(".eslintrc.js"))  # Has .js extension
+        assert traverser._should_ignore_file(Path(".prettierrc.json"))  # Has .json extension
+        assert traverser._should_ignore_file(Path(".gitignore"))  # No extension, filtered by include_extensions
+        assert traverser._should_ignore_file(Path(".dockerignore"))  # No extension, filtered by include_extensions
+        assert traverser._should_ignore_file(Path(".env"))  # No extension, filtered by include_extensions
+        
+        # Should not ignore visible files
+        assert not traverser._should_ignore_file(Path("README.md"))
+        assert not traverser._should_ignore_file(Path("main.py"))
+        assert not traverser._should_ignore_file(Path("config.json"))
+
+    def test_should_ignore_hidden_files_disabled(self):
+        """Test hidden files are included when ignore_hidden=False."""
+        settings = DigginSettings(
+            ignore_dirs=["node_modules"],
+            ignore_files=["*.pyc", "*.log", ".DS_Store"],  # Still explicitly ignore .DS_Store
+            include_extensions=[".py", ".js", ".md", ".json"],
+            ignore_hidden=False  # Disabled
+        )
+        traverser = DirectoryTraverser(settings)
+        
+        # Should not ignore hidden files with valid extensions when ignore_hidden=False
+        assert not traverser._should_ignore_file(Path(".eslintrc.js"))  # Has .js extension
+        assert not traverser._should_ignore_file(Path(".prettierrc.json"))  # Has .json extension
+        
+        # But still ignore files without valid extensions (due to include_extensions)
+        assert traverser._should_ignore_file(Path(".env"))  # No extension
+        assert traverser._should_ignore_file(Path(".gitignore"))  # No extension
+        
+        # And still ignore explicitly listed files
+        assert traverser._should_ignore_file(Path(".DS_Store"))  # In ignore_files
+        assert traverser._should_ignore_file(Path("debug.log"))  # Matches *.log pattern
+        
+    def test_ignore_hidden_priority(self):
+        """Test that ignore_hidden check happens before extension check."""
+        settings = DigginSettings(
+            ignore_dirs=[],
+            ignore_files=[],
+            include_extensions=[".txt"],  # Only .txt files allowed
+            ignore_hidden=True
+        )
+        traverser = DirectoryTraverser(settings)
+        
+        # Hidden files should be ignored due to ignore_hidden, regardless of extension filtering
+        assert traverser._should_ignore_file(Path(".env"))
+        assert traverser._should_ignore_file(Path(".gitignore"))
+        assert traverser._should_ignore_file(Path(".config.txt"))  # Hidden, even with valid extension
+        
+        # Visible files should be filtered by include_extensions
+        assert not traverser._should_ignore_file(Path("config.txt"))  # Valid extension
+        assert traverser._should_ignore_file(Path("main.py"))  # Invalid extension
     
     def test_is_text_file(self, traverser):
         """Test text file detection."""
@@ -208,3 +296,70 @@ class TestDirectoryTraverser:
         assert file_info["name"] == "test.py"
         assert file_info["is_text"] is True
         assert "content_preview" in file_info
+    
+    def test_find_leaf_directories_with_hidden(self, tmp_path):
+        """Test that hidden directories are excluded from traversal."""
+        settings = DigginSettings(
+            ignore_dirs=["node_modules"],
+            ignore_files=["*.pyc", "*.log"],
+            include_extensions=[".py", ".js", ".md"],
+            ignore_hidden=True  # Default behavior
+        )
+        traverser = DirectoryTraverser(settings)
+        
+        # Create mixed visible and hidden directories
+        (tmp_path / "src").mkdir()
+        (tmp_path / "docs").mkdir()
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".vscode").mkdir()
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".cursor").mkdir()
+        
+        # Add some files to make directories detectable
+        (tmp_path / "src" / "main.py").write_text("print('main')")
+        (tmp_path / "docs" / "README.md").write_text("# Docs")
+        (tmp_path / ".git" / "config").write_text("[core]")
+        (tmp_path / ".vscode" / "settings.json").write_text("{}")
+        
+        leaf_dirs = traverser.find_leaf_directories(tmp_path)
+        relative_paths = [str(d.relative_to(tmp_path)) for d in leaf_dirs]
+        
+        # Should only find visible directories
+        assert "src" in relative_paths
+        assert "docs" in relative_paths
+        assert ".git" not in relative_paths
+        assert ".vscode" not in relative_paths
+        assert ".claude" not in relative_paths
+        assert ".cursor" not in relative_paths
+    
+    def test_collect_directory_info_with_hidden_files(self, tmp_path):
+        """Test that hidden files are excluded from directory info."""
+        settings = DigginSettings(
+            ignore_dirs=[],
+            ignore_files=[],
+            include_extensions=[".py", ".md", ".json"],
+            ignore_hidden=True  # Default behavior
+        )
+        traverser = DirectoryTraverser(settings)
+        
+        # Create mixed visible and hidden files
+        (tmp_path / "main.py").write_text("print('main')")
+        (tmp_path / "README.md").write_text("# README")
+        (tmp_path / ".env").write_text("SECRET=123")
+        (tmp_path / ".gitignore").write_text("*.pyc")
+        (tmp_path / ".DS_Store").write_bytes(b'\x00\x01\x02')
+        (tmp_path / ".vscode").mkdir()
+        
+        info = traverser.collect_directory_info(tmp_path)
+        
+        # Should only include visible files
+        file_names = [f["name"] for f in info["files"]]
+        assert "main.py" in file_names
+        assert "README.md" in file_names
+        assert ".env" not in file_names
+        assert ".gitignore" not in file_names
+        assert ".DS_Store" not in file_names
+        
+        # Should not include hidden subdirectories
+        subdir_names = [d["name"] for d in info["subdirs"]]
+        assert ".vscode" not in subdir_names
