@@ -50,6 +50,7 @@
     ".scala",
     ".clj"
   ],
+  "ignore_hidden": true,
   "max_file_size": "1MB",
   "api_provider": "claude",
   "api_options": {

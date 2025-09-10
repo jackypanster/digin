@@ -14,6 +14,7 @@ class DigginSettings:
     ignore_dirs: List[str] = field(default_factory=list)
     ignore_files: List[str] = field(default_factory=list)
     include_extensions: List[str] = field(default_factory=list)
+    ignore_hidden: bool = True
     max_file_size: str = "1MB"
     
     # AI provider settings
