@@ -1,127 +1,131 @@
-"""
-Configuration management for Digin
-"""
+"""Configuration management for digin."""
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
 
 
 @dataclass
 class DigginSettings:
-    """Settings for Digin analysis"""
+    """Configuration settings for digin."""
     
-    # Core settings
-    ignore_dirs: List[str]
-    ignore_files: List[str]
-    include_extensions: List[str]
-    max_file_size: str
+    # Directory and file filtering
+    ignore_dirs: List[str] = field(default_factory=list)
+    ignore_files: List[str] = field(default_factory=list)
+    include_extensions: List[str] = field(default_factory=list)
+    ignore_hidden: bool = True
+    max_file_size: str = "1MB"
     
     # AI provider settings
-    api_provider: str
-    api_options: Dict[str, Any]
+    api_provider: str = "claude"
+    api_options: Dict[str, Any] = field(default_factory=dict)
     
     # Analysis settings
-    cache_enabled: bool
-    parallel_workers: int
-    max_depth: int
-    verbose: bool
+    cache_enabled: bool = True
+    parallel_workers: int = 1
+    max_depth: int = 10
+    verbose: bool = False
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert settings to dictionary"""
-        return asdict(self)
+    def get_max_file_size_bytes(self) -> int:
+        """Convert max_file_size to bytes."""
+        size_str = self.max_file_size.upper()
+        if size_str.endswith("KB"):
+            return int(size_str[:-2]) * 1024
+        elif size_str.endswith("MB"):
+            return int(size_str[:-2]) * 1024 * 1024
+        elif size_str.endswith("GB"):
+            return int(size_str[:-2]) * 1024 * 1024 * 1024
+        else:
+            return int(size_str)
 
 
 class ConfigManager:
-    """Manages configuration loading and validation"""
+    """Manages configuration loading and merging."""
     
     def __init__(self, config_file: Optional[Path] = None):
+        """Initialize configuration manager.
+        
+        Args:
+            config_file: Optional path to custom config file
+        """
         self.config_file = config_file
         self.default_config_path = Path(__file__).parent.parent / "config" / "default.json"
-    
+        
     def load_config(self) -> DigginSettings:
-        """Load configuration from files"""
-        # Start with default config
+        """Load configuration from default and custom files.
+        
+        Returns:
+            Merged configuration settings
+        """
+        # Load default configuration
         default_config = self._load_json_config(self.default_config_path)
         
-        # Load custom config if provided
-        if self.config_file:
+        # Load project-specific configuration if exists
+        project_config = {}
+        project_config_path = Path.cwd() / ".digin.json"
+        if project_config_path.exists():
+            project_config = self._load_json_config(project_config_path)
+        
+        # Load custom configuration if specified
+        custom_config = {}
+        if self.config_file and self.config_file.exists():
             custom_config = self._load_json_config(self.config_file)
-            default_config.update(custom_config)
         
-        # Look for .digin.json in current directory
-        local_config_path = Path(".digin.json")
-        if local_config_path.exists():
-            local_config = self._load_json_config(local_config_path)
-            default_config.update(local_config)
+        # Merge configurations (custom overrides project overrides default)
+        merged_config = {**default_config, **project_config, **custom_config}
         
-        return self._create_settings_from_dict(default_config)
+        # Convert to DigginSettings dataclass
+        return DigginSettings(**merged_config)
     
-    def _load_json_config(self, path: Path) -> Dict[str, Any]:
-        """Load configuration from JSON file"""
+    def _load_json_config(self, config_path: Path) -> Dict[str, Any]:
+        """Load JSON configuration from file.
+        
+        Args:
+            config_path: Path to JSON configuration file
+            
+        Returns:
+            Configuration dictionary
+        """
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except FileNotFoundError:
-            if path == self.default_config_path:
-                # Return built-in defaults if default config missing
-                return self._get_builtin_defaults()
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            if config_path == self.default_config_path:
+                # Default config is required
+                raise RuntimeError(f"Failed to load default configuration: {e}")
+            # Other configs are optional
             return {}
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in config file {path}: {e}")
     
-    def _create_settings_from_dict(self, config_dict: Dict[str, Any]) -> DigginSettings:
-        """Create DigginSettings from configuration dictionary"""
-        return DigginSettings(
-            ignore_dirs=config_dict.get("ignore_dirs", []),
-            ignore_files=config_dict.get("ignore_files", []),
-            include_extensions=config_dict.get("include_extensions", []),
-            max_file_size=config_dict.get("max_file_size", "1MB"),
-            api_provider=config_dict.get("api_provider", "claude"),
-            api_options=config_dict.get("api_options", {}),
-            cache_enabled=config_dict.get("cache_enabled", True),
-            parallel_workers=config_dict.get("parallel_workers", 1),
-            max_depth=config_dict.get("max_depth", 10),
-            verbose=config_dict.get("verbose", False),
-        )
-    
-    def _get_builtin_defaults(self) -> Dict[str, Any]:
-        """Get built-in default configuration"""
-        return {
+    def save_config_template(self, output_path: Path) -> None:
+        """Save a configuration template file.
+        
+        Args:
+            output_path: Where to save the template
+        """
+        template = {
             "ignore_dirs": [
                 "node_modules", ".git", "dist", "build", "__pycache__",
                 ".pytest_cache", "venv", ".venv", "env", ".env"
             ],
             "ignore_files": [
-                "*.pyc", "*.log", ".DS_Store", "*.tmp", "*.swp"
+                "*.pyc", "*.log", ".DS_Store", "*.tmp", "*.swp",
+                "package-lock.json", "yarn.lock", "uv.lock"
             ],
             "include_extensions": [
-                ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go"
+                ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs"
             ],
             "max_file_size": "1MB",
             "api_provider": "claude",
             "api_options": {
                 "model": "claude-3-sonnet",
-                "max_tokens": 4000,
-                "append_system_prompt": "ê“úJSONWµ%<	Schema"
+                "max_tokens": 4000
             },
             "cache_enabled": True,
             "parallel_workers": 1,
             "max_depth": 10,
             "verbose": False
         }
-    
-    def save_config(self, settings: DigginSettings, path: Optional[Path] = None) -> None:
-        """Save configuration to file"""
-        if not path:
-            path = Path(".digin.json")
         
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(settings.to_dict(), f, indent=2, ensure_ascii=False)
-
-
-def load_default_settings() -> DigginSettings:
-    """Quick function to load default settings"""
-    manager = ConfigManager()
-    return manager.load_config()
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(template, f, indent=2, ensure_ascii=False)
