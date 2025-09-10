@@ -1,3 +1,3 @@
-"""Version information for digin."""
+"""版本信息，供打包、日誌與輸出元數據使用。"""
 
 __version__ = "0.1.0"

@@ -1,4 +1,12 @@
-"""Caching system for digest results to avoid redundant AI analysis."""
+"""摘要緩存管理（目錄級）。
+
+業務邏輯：
+- 以目錄內「相對路徑 + 元信息（mtime/size）+ 小文本文件內容（≤8KB）」計算哈希。
+- 命中：返回現有 `digest.json`；不一致：視為失效重新計算。
+- 存儲：寫入 `digest.json` 與 `.digin_hash`；支持遞歸清理與緩存統計。
+
+目的：降低重複 AI 調用成本，支撐可預期的增量分析工作流。
+"""
 
 import hashlib
 import json

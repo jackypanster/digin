@@ -1,4 +1,13 @@
-"""AI client for code analysis using Claude/Gemini CLI tools."""
+"""AI 客戶端封裝（Claude/Gemini）。
+
+職責：
+- 讀取 `config/prompt.txt` 模板，拼裝目錄文件列表、代碼片段與子摘要。
+- 調用對應 CLI（claude/gemini），並在超時/錯誤時回退。
+- 解析 JSON（帶「從文本提取 JSON」容錯），補充 `analyzed_at`/`analyzer_version` 元數據。
+- 工廠 `AIClientFactory` 根據配置選擇提供方，便於擴展與替換。
+
+設計動機：將供應商交互與提示工程從主流程解耦，降低耦合度，提升可維護性。
+"""
 
 import json
 import subprocess

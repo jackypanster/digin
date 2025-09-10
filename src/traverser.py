@@ -1,4 +1,13 @@
-"""Directory traversal and file collection for codebase analysis."""
+"""目錄遍歷與文件信息收集。
+
+業務邏輯：
+- 忽略規則：隱藏文件/夾、ignore_dirs/ignore_files、include_extensions 白名單。
+- 葉子判定：無可分析子目錄即為葉子；供「自底向上」序列使用。
+- 收集信息：文件名、大小、擴展名、是否文本、最多 2KB 內容預覽；統計文件數/總大小。
+- 僅針對小文本讀取片段，避免大文件 I/O 開銷。
+
+設計意圖：為 AI 準備足夠上下文，同時控制 IO 與成本。
+"""
 
 import fnmatch
 from pathlib import Path
