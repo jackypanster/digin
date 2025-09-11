@@ -112,52 +112,54 @@ class ClaudeClient(BaseAIClient):
     
     def _build_prompt(self, directory_info: Dict[str, Any], 
                      children_digests: List[Dict[str, Any]]) -> str:
-        """Build analysis prompt from template.
+        """Build analysis prompt from template."""
+        file_list_str = self._format_file_list(directory_info.get("files", []))
+        code_snippets_str = self._format_code_snippets(directory_info.get("files", []))
+        children_digests_str = self._format_children_digests(children_digests)
         
-        Args:
-            directory_info: Directory information
-            children_digests: Child directory digests
-            
-        Returns:
-            Formatted prompt string
-        """
-        # Format file list
-        file_list = []
-        for file_info in directory_info.get("files", []):
-            extension = file_info.get("extension", "")
-            size = file_info.get("size", 0)
-            file_list.append(f"- {file_info['name']} ({extension}, {size} bytes)")
-        
-        file_list_str = "\n".join(file_list) if file_list else "无直接文件"
-        
-        # Format code snippets (first 5 files with content)
-        code_snippets = []
-        for file_info in directory_info.get("files", [])[:5]:
-            if "content_preview" in file_info:
-                content = file_info["content_preview"]
-                code_snippets.append(
-                    f"**{file_info['name']}**:\n```\n{content}\n```"
-                )
-        
-        code_snippets_str = "\n\n".join(code_snippets) if code_snippets else "无代码预览"
-        
-        # Format children digests
-        if children_digests:
-            children_summaries = []
-            for child in children_digests:
-                summary = f"- {child.get('name', '未知')}: {child.get('summary', '无摘要')}"
-                children_summaries.append(summary)
-            children_digests_str = "\n".join(children_summaries)
-        else:
-            children_digests_str = "无子目录（叶子目录）"
-        
-        # Fill template
         return self.prompt_template.format(
             directory_path=directory_info.get("path", ""),
             file_list=file_list_str,
             code_snippets=code_snippets_str,
             children_digests=children_digests_str
         )
+    
+    def _format_file_list(self, files: List[Dict[str, Any]]) -> str:
+        """Format file list for prompt."""
+        if not files:
+            return "无直接文件"
+            
+        file_list = []
+        for file_info in files:
+            extension = file_info.get("extension", "")
+            size = file_info.get("size", 0)
+            file_list.append(f"- {file_info['name']} ({extension}, {size} bytes)")
+        
+        return "\n".join(file_list)
+    
+    def _format_code_snippets(self, files: List[Dict[str, Any]]) -> str:
+        """Format code snippets for prompt."""
+        code_snippets = []
+        for file_info in files[:5]:  # First 5 files only
+            if "content_preview" in file_info:
+                content = file_info["content_preview"]
+                code_snippets.append(
+                    f"**{file_info['name']}**:\n```\n{content}\n```"
+                )
+        
+        return "\n\n".join(code_snippets) if code_snippets else "无代码预览"
+    
+    def _format_children_digests(self, children_digests: List[Dict[str, Any]]) -> str:
+        """Format children digests for prompt."""
+        if not children_digests:
+            return "无子目录（叶子目录）"
+            
+        children_summaries = []
+        for child in children_digests:
+            summary = f"- {child.get('name', '未知')}: {child.get('summary', '无摘要')}"
+            children_summaries.append(summary)
+        
+        return "\n".join(children_summaries)
     
     def _call_claude_cli(self, prompt: str) -> str:
         """Call Claude CLI with prompt.
