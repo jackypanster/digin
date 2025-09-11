@@ -109,42 +109,38 @@ class SummaryAggregator:
     def _generate_aggregated_summary(self, directory: Path, 
                                    child_digests: List[Dict[str, Any]],
                                    direct_files_info: Optional[Dict[str, Any]]) -> str:
-        """Generate summary for aggregated directory.
-        
-        Args:
-            directory: Parent directory
-            child_digests: Child directory digests  
-            direct_files_info: Direct files information
-            
-        Returns:
-            Human-readable summary
-        """
+        """Generate summary for aggregated directory."""
         if not child_digests:
             return f"{directory.name} 目录（暂无子模块分析结果）"
         
-        # Collect child summaries
         child_names = [digest.get("name", "未知模块") for digest in child_digests]
         child_count = len(child_names)
+        dominant_kind = self._get_dominant_kind(child_digests)
         
-        # Determine directory purpose from children
+        summary = self._get_kind_summary(dominant_kind, child_count)
+        summary += self._add_capabilities_info(child_digests)
+        summary += self._add_child_names_info(child_names, child_count)
+        
+        return summary
+    
+    def _get_dominant_kind(self, child_digests: List[Dict[str, Any]]) -> str:
+        """Get the dominant kind from child digests."""
         kind_counts = Counter(digest.get("kind", "unknown") for digest in child_digests)
-        dominant_kind = kind_counts.most_common(1)[0][0]
-        
-        # Generate contextual summary
-        if dominant_kind == "service":
-            summary = f"包含 {child_count} 个业务服务模块"
-        elif dominant_kind == "lib":
-            summary = f"包含 {child_count} 个工具库和通用组件"
-        elif dominant_kind == "test":
-            summary = f"包含 {child_count} 个测试模块"
-        elif dominant_kind == "ui":
-            summary = f"包含 {child_count} 个用户界面组件"
-        elif dominant_kind == "config":
-            summary = f"包含 {child_count} 个配置相关模块"
-        else:
-            summary = f"包含 {child_count} 个子模块"
-        
-        # Add key capabilities if available
+        return kind_counts.most_common(1)[0][0]
+    
+    def _get_kind_summary(self, dominant_kind: str, child_count: int) -> str:
+        """Get summary text based on dominant kind."""
+        kind_summaries = {
+            "service": f"包含 {child_count} 个业务服务模块",
+            "lib": f"包含 {child_count} 个工具库和通用组件", 
+            "test": f"包含 {child_count} 个测试模块",
+            "ui": f"包含 {child_count} 个用户界面组件",
+            "config": f"包含 {child_count} 个配置相关模块",
+        }
+        return kind_summaries.get(dominant_kind, f"包含 {child_count} 个子模块")
+    
+    def _add_capabilities_info(self, child_digests: List[Dict[str, Any]]) -> str:
+        """Add capabilities information to summary."""
         all_capabilities = []
         for digest in child_digests:
             capabilities = digest.get("capabilities", [])
@@ -152,15 +148,15 @@ class SummaryAggregator:
         
         if all_capabilities:
             unique_capabilities = list(set(all_capabilities))[:3]  # Top 3 unique
-            summary += f"，主要提供：{' | '.join(unique_capabilities)}"
-        
-        # Add child module names
+            return f"，主要提供：{' | '.join(unique_capabilities)}"
+        return ""
+    
+    def _add_child_names_info(self, child_names: List[str], child_count: int) -> str:
+        """Add child names information to summary."""
         if child_count <= 3:
-            summary += f"（{' | '.join(child_names)}）"
+            return f"（{' | '.join(child_names)}）"
         else:
-            summary += f"（包括 {' | '.join(child_names[:3])} 等）"
-        
-        return summary
+            return f"（包括 {' | '.join(child_names[:3])} 等）"
     
     def _merge_capabilities(self, child_digests: List[Dict[str, Any]]) -> List[str]:
         """Merge capabilities from child directories.

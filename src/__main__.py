@@ -13,7 +13,7 @@ Digin 命令行入口。
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import click
 from rich.console import Console
@@ -23,7 +23,7 @@ from rich.tree import Tree
 from rich.table import Table
 from rich.text import Text
 
-from .config import ConfigManager
+from .config import ConfigManager, DigginSettings
 from .analyzer import CodebaseAnalyzer, AnalysisError
 from .__version__ import __version__
 
@@ -37,6 +37,137 @@ def print_banner() -> None:
 [dim]Deep dive into your code and understand it like never before[/dim]
     """
     console.print(Panel(banner_text.strip(), style="blue"))
+
+
+def load_and_configure_settings(config_path: Optional[Path], provider: Optional[str], 
+                               verbose: bool, force: bool) -> DigginSettings:
+    """Load configuration and apply CLI overrides."""
+    config_manager = ConfigManager(config_file=config_path)
+    settings = config_manager.load_config()
+    
+    if provider:
+        settings.api_provider = provider.lower()
+    if verbose:
+        settings.verbose = True
+    if force:
+        settings.cache_enabled = False
+    
+    return settings
+
+
+def validate_target_path(path: Path) -> None:
+    """Validate that target path is a directory."""
+    if not path.is_dir():
+        console.print(f"[red]Error: {path} is not a directory[/red]")
+        sys.exit(1)
+
+
+def show_dry_run_plan(analyzer: CodebaseAnalyzer, path: Path, verbose: bool) -> None:
+    """Show dry run analysis plan."""
+    console.print("\n[bold yellow]🔍 Dry Run - Analysis Plan[/bold yellow]")
+    
+    try:
+        dry_run_info = analyzer.dry_run(path)
+        _display_dry_run_table(dry_run_info)
+        _display_dry_run_tree(dry_run_info, path, verbose)
+        _display_dry_run_summary(dry_run_info)
+        
+    except Exception as e:
+        console.print(f"[red]Error during dry-run: {e}[/red]")
+
+
+def _display_dry_run_table(dry_run_info: dict) -> None:
+    """Display dry run overview table."""
+    table = Table(title="Analysis Overview", show_header=True, header_style="bold cyan")
+    table.add_column("Metric", style="dim", width=20)
+    table.add_column("Value", style="bold")
+    
+    table.add_row("Total Directories", str(dry_run_info["total_directories"]))
+    table.add_row("Leaf Directories", str(dry_run_info["leaf_directories"]))
+    table.add_row("Parent Directories", str(dry_run_info["parent_directories"]))
+    table.add_row("Estimated Files", str(dry_run_info["estimated_files"]))
+    table.add_row("AI Provider", dry_run_info["ai_provider"])
+    table.add_row("Cache Enabled", "Yes" if dry_run_info["cache_enabled"] else "No")
+    
+    console.print(table)
+
+
+def _display_dry_run_tree(dry_run_info: dict, path: Path, verbose: bool) -> None:
+    """Display analysis order tree if verbose."""
+    if not (verbose and dry_run_info["analysis_order"]):
+        return
+        
+    console.print("\n[bold]Analysis Order (first 10):[/bold]")
+    tree = Tree(f"📁 {path.name}")
+    
+    for i, dir_path in enumerate(dry_run_info["analysis_order"][:10]):
+        rel_path = Path(dir_path).relative_to(path) if Path(dir_path) != path else Path(".")
+        if i < dry_run_info["leaf_directories"]:
+            tree.add(f"🍃 [green]{rel_path}[/green] (leaf)")
+        else:
+            tree.add(f"📂 [blue]{rel_path}[/blue] (parent)")
+    
+    if len(dry_run_info["analysis_order"]) > 10:
+        tree.add(f"[dim]... and {len(dry_run_info['analysis_order']) - 10} more[/dim]")
+    
+    console.print(tree)
+
+
+def _display_dry_run_summary(dry_run_info: dict) -> None:
+    """Display dry run summary."""
+    total_dirs = dry_run_info['total_directories']
+    leaf_dirs = dry_run_info['leaf_directories']
+    console.print(f"\n[yellow]Would analyze {total_dirs} directories with {leaf_dirs} AI calls[/yellow]")
+
+
+def run_analysis_with_progress(analyzer: CodebaseAnalyzer, path: Path, 
+                             quiet: bool, verbose: bool) -> Dict[str, Any]:
+    """Execute analysis with progress tracking."""
+    if not quiet:
+        console.print(f"\n[bold]Starting analysis of [green]{path.name}[/green]...[/bold]")
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn() if not verbose else BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        console=console,
+        disable=quiet or verbose,
+    ) as progress:
+        task = progress.add_task("Initializing...", total=100)
+        
+        # Get analysis plan
+        dry_run_info = analyzer.dry_run(path)
+        total_dirs = dry_run_info["total_directories"]
+        progress.update(task, description=f"Analyzing {total_dirs} directories...", total=total_dirs)
+        
+        # Create progress-aware analyzer
+        progress_analyzer = _create_progress_analyzer(analyzer, progress, task)
+        
+        # Execute analysis
+        results = progress_analyzer.analyze(path)
+        progress.update(task, completed=total_dirs, description="Analysis complete")
+        
+        # Transfer stats back to original analyzer
+        analyzer.stats = progress_analyzer.stats
+        
+        return results
+
+
+def _create_progress_analyzer(analyzer: CodebaseAnalyzer, progress: Progress, task) -> CodebaseAnalyzer:
+    """Create analyzer that updates progress during analysis."""
+    class ProgressAnalyzer(CodebaseAnalyzer):
+        def _analyze_directory(self, directory, root_path, completed_digests):
+            completed = len(completed_digests)
+            progress.update(task, completed=completed, 
+                          description=f"Analyzing {directory.name}...")
+            return super()._analyze_directory(directory, root_path, completed_digests)
+    
+    progress_analyzer = ProgressAnalyzer(analyzer.settings)
+    progress_analyzer.ai_client = analyzer.ai_client
+    progress_analyzer.cache_manager = analyzer.cache_manager
+    
+    return progress_analyzer
 
 
 @click.command()
@@ -100,120 +231,33 @@ def main(
     PATH: Directory to analyze (defaults to current directory)
     """
     try:
-        # Configure console
         if quiet:
             console.quiet = True
         
         if not quiet:
             print_banner()
         
-        # Load configuration
-        config_manager = ConfigManager(config_file=config)
-        settings = config_manager.load_config()
-        
-        # Override settings with CLI options
-        if provider:
-            settings.api_provider = provider.lower()
-        if verbose:
-            settings.verbose = True
-        if force:
-            settings.cache_enabled = False
+        settings = load_and_configure_settings(config, provider, verbose, force)
         
         if verbose and not quiet:
             console.print(f"[dim]Analyzing: {path.absolute()}[/dim]")
             console.print(f"[dim]Provider: {settings.api_provider}[/dim]")
             console.print(f"[dim]Cache enabled: {settings.cache_enabled}[/dim]")
         
-        # Validate target directory
-        if not path.is_dir():
-            console.print(f"[red]Error: {path} is not a directory[/red]")
-            sys.exit(1)
+        validate_target_path(path)
+        analyzer = setup_analyzer(settings, path, clear_cache, quiet)
         
-        # Initialize analyzer
-        analyzer = CodebaseAnalyzer(settings)
-        
-        # Clear cache if requested
-        if clear_cache:
-            analyzer.clear_cache(path)
-            if not quiet:
-                console.print("[yellow]Cache cleared[/yellow]")
-        
-        # Check AI CLI availability
-        if not analyzer.ai_client.is_available():
-            console.print(
-                f"[red]Error: {settings.api_provider} CLI not found.[/red]\n"
-                f"Please install the {settings.api_provider} CLI tool."
-            )
-            sys.exit(1)
-        
-        # Handle dry run
         if dry_run:
-            _show_dry_run(analyzer, path, verbose)
+            show_dry_run_plan(analyzer, path, verbose)
             return
         
-        # Run analysis
-        if not quiet:
-            console.print(f"\n[bold]Starting analysis of [green]{path.name}[/green]...[/bold]")
+        results = run_analysis_with_progress(analyzer, path, quiet, verbose)
         
-        # Progress tracking
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn() if not verbose else BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            console=console,
-            disable=quiet or verbose,
-        ) as progress:
-            task = progress.add_task("Initializing...", total=100)
-            
-            try:
-                # Get analysis plan
-                dry_run_info = analyzer.dry_run(path)
-                total_dirs = dry_run_info["total_directories"]
-                
-                progress.update(task, description=f"Analyzing {total_dirs} directories...", total=total_dirs)
-                
-                # Run analysis with progress updates
-                class ProgressAnalyzer(CodebaseAnalyzer):
-                    def _analyze_directory(self, directory, root_path, completed_digests):
-                        # Update progress
-                        completed = len(completed_digests)
-                        progress.update(task, completed=completed, 
-                                      description=f"Analyzing {directory.name}...")
-                        return super()._analyze_directory(directory, root_path, completed_digests)
-                
-                # Use progress-aware analyzer
-                progress_analyzer = ProgressAnalyzer(settings)
-                progress_analyzer.ai_client = analyzer.ai_client
-                progress_analyzer.cache_manager = analyzer.cache_manager
-                
-                results = progress_analyzer.analyze(path)
-                progress.update(task, completed=total_dirs, description="Analysis complete")
-                
-                # Update stats
-                analyzer.stats = progress_analyzer.stats
-                
-            except KeyboardInterrupt:
-                progress.update(task, description="Analysis interrupted")
-                console.print("\n[yellow]Analysis interrupted by user[/yellow]")
-                sys.exit(1)
-            except AnalysisError as e:
-                progress.update(task, description="Analysis failed")
-                console.print(f"\n[red]Analysis failed: {e}[/red]")
-                if verbose:
-                    import traceback
-                    console.print(f"[red]{traceback.format_exc()}[/red]")
-                sys.exit(1)
-        
-        # Display results
         if not quiet and results:
             _display_results(results, output_format, verbose)
         
-        # Show statistics
         if not quiet:
             _show_statistics(analyzer.get_analysis_stats())
-        
-        if not quiet:
             console.print("\n✅ [green]Analysis complete![/green]")
         
     except Exception as e:
@@ -224,48 +268,24 @@ def main(
         sys.exit(1)
 
 
-def _show_dry_run(analyzer: CodebaseAnalyzer, path: Path, verbose: bool) -> None:
-    """Show dry run analysis plan."""
-    console.print("\n[bold yellow]🔍 Dry Run - Analysis Plan[/bold yellow]")
+def setup_analyzer(settings: DigginSettings, path: Path, clear_cache: bool, quiet: bool) -> CodebaseAnalyzer:
+    """Initialize and configure analyzer."""
+    analyzer = CodebaseAnalyzer(settings)
     
-    try:
-        dry_run_info = analyzer.dry_run(path)
-        
-        # Create summary table
-        table = Table(title="Analysis Overview", show_header=True, header_style="bold cyan")
-        table.add_column("Metric", style="dim", width=20)
-        table.add_column("Value", style="bold")
-        
-        table.add_row("Total Directories", str(dry_run_info["total_directories"]))
-        table.add_row("Leaf Directories", str(dry_run_info["leaf_directories"]))
-        table.add_row("Parent Directories", str(dry_run_info["parent_directories"]))
-        table.add_row("Estimated Files", str(dry_run_info["estimated_files"]))
-        table.add_row("AI Provider", dry_run_info["ai_provider"])
-        table.add_row("Cache Enabled", "Yes" if dry_run_info["cache_enabled"] else "No")
-        
-        console.print(table)
-        
-        # Show directory tree (first 10 directories)
-        if verbose and dry_run_info["analysis_order"]:
-            console.print("\n[bold]Analysis Order (first 10):[/bold]")
-            tree = Tree(f"📁 {path.name}")
-            
-            for i, dir_path in enumerate(dry_run_info["analysis_order"][:10]):
-                rel_path = Path(dir_path).relative_to(path) if Path(dir_path) != path else Path(".")
-                if i < dry_run_info["leaf_directories"]:
-                    tree.add(f"🍃 [green]{rel_path}[/green] (leaf)")
-                else:
-                    tree.add(f"📂 [blue]{rel_path}[/blue] (parent)")
-            
-            if len(dry_run_info["analysis_order"]) > 10:
-                tree.add(f"[dim]... and {len(dry_run_info['analysis_order']) - 10} more[/dim]")
-            
-            console.print(tree)
-        
-        console.print(f"\n[yellow]Would analyze {dry_run_info['total_directories']} directories with {dry_run_info['leaf_directories']} AI calls[/yellow]")
-        
-    except Exception as e:
-        console.print(f"[red]Error during dry-run: {e}[/red]")
+    if clear_cache:
+        analyzer.clear_cache(path)
+        if not quiet:
+            console.print("[yellow]Cache cleared[/yellow]")
+    
+    if not analyzer.ai_client.is_available():
+        console.print(
+            f"[red]Error: {settings.api_provider} CLI not found.[/red]\n"
+            f"Please install the {settings.api_provider} CLI tool."
+        )
+        sys.exit(1)
+    
+    return analyzer
+
 
 
 def _display_results(results: dict, format_type: str, verbose: bool) -> None:
