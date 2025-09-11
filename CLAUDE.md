@@ -77,6 +77,10 @@ uv run mypy src
 
 # Run all quality checks
 uv run black src tests && uv run isort src tests && uv run flake8 src tests && uv run mypy src
+
+# Pre-commit hooks (automatically run on commit)
+uv run pre-commit install
+uv run pre-commit run --all-files
 ```
 
 ## Architecture Overview
@@ -193,8 +197,10 @@ class FileCounter:
 ## Development Notes
 
 - Uses `uv` as the package manager and task runner
-- Python 3.8+ required
+- Python 3.8+ required (minimum 3.8.1 for mypy compatibility)
 - Uses dataclasses for configuration and type hints throughout
 - Rich library provides CLI formatting and progress indication
 - AI CLI tools must be installed separately (claude/gemini)
 - Prompt template in `config/prompt.txt` defines AI analysis instructions
+- Pre-commit hooks enforce code quality (black, isort, flake8, mypy)
+- Project entry point: `src:main` (can be run as `digin` command after installation)
