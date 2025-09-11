@@ -170,7 +170,7 @@ class ClaudeClient(BaseAIClient):
         Returns:
             Claude's response
         """
-        cmd = ["claude"]
+        cmd = ["claude", "--print"]  # Use --print for non-interactive mode
         
         # Add system prompt if specified
         if "append_system_prompt" in self.api_options:
@@ -178,18 +178,21 @@ class ClaudeClient(BaseAIClient):
         
         # Add model if specified
         if "model" in self.api_options:
-            cmd.extend(["--model", self.api_options["model"]])
-        
-        # Add max tokens if specified
-        if "max_tokens" in self.api_options:
-            cmd.extend(["--max-tokens", str(self.api_options["max_tokens"])])
-        
-        # Add prompt
-        cmd.extend(["--prompt", prompt])
+            # Map common model names to valid Claude CLI model names
+            model = self.api_options["model"]
+            if model == "claude-3-sonnet":
+                model = "sonnet"
+            elif model == "claude-3-opus":
+                model = "opus"
+            elif model == "claude-3-haiku":
+                model = "haiku"
+            cmd.extend(["--model", model])
         
         try:
+            # Pass prompt via stdin instead of as argument
             result = subprocess.run(
                 cmd,
+                input=prompt,  # Pass prompt through stdin
                 capture_output=True,
                 text=True,
                 timeout=120  # 2 minute timeout
