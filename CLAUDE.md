@@ -22,12 +22,20 @@ uv pip install -e .
 
 ### Running the Application
 ```bash
-# Run directly via Python module
+# Primary method: Run directly via Python module
 python -m src /path/to/analyze
+
+# Alternative with uv
+uv run python -m src /path/to/analyze
 
 # After installation, use the digin command
 digin /path/to/analyze
 digin /path/to/analyze --provider gemini --verbose
+
+# Common usage patterns
+python -m src . --dry-run                    # Preview analysis plan
+python -m src . --force --verbose           # Force refresh with detailed output
+python -m src . --output-format json        # JSON output format
 ```
 
 ### Testing
@@ -40,6 +48,14 @@ uv run pytest --cov=src --cov-report=html
 
 # Run specific test file
 uv run pytest tests/test_analyzer.py
+
+# Run specific test function
+uv run pytest tests/test_analyzer.py::test_analyze_directory -v
+
+# Run tests by category (using markers)
+uv run pytest -m unit          # Unit tests only
+uv run pytest -m integration   # Integration tests only
+uv run pytest -m "not slow"    # Skip slow tests
 
 # Run tests in verbose mode
 uv run pytest -v
@@ -83,12 +99,15 @@ The application follows a modular architecture with clear separation of concerns
 
 ### Analysis Flow
 
-1. **Configuration Loading**: Merges default config → .digin.json → CLI options
+1. **Configuration Loading**: Three-tier precedence system
+   - Base: `config/default.json` (built-in defaults)
+   - Override: `.digin.json` in project root (project-specific)
+   - Final: CLI options (highest priority, overrides all)
 2. **Directory Traversal**: Scans repository, identifies leaf directories first
 3. **Bottom-up Analysis**: 
-   - Leaf directories: AI analysis of files
-   - Parent directories: Aggregation of child summaries
-4. **Caching**: Results cached as digest.json files
+   - Leaf directories: AI analysis of files via `src/ai_client.py`
+   - Parent directories: Aggregation of child summaries via `src/aggregator.py`
+4. **Caching**: Results cached as digest.json files (managed by `src/cache.py`)
 5. **Output**: Structured JSON with project understanding
 
 ### Key Patterns
@@ -109,6 +128,67 @@ Default configuration is in `config/default.json`. Users can override with `.dig
 - `api_provider`: AI provider (claude/gemini)
 - `cache_enabled`: Whether to use digest caching
 - `max_depth`: Maximum directory depth to analyze
+
+## Python Coding Guidelines
+
+### Core Philosophy
+Write simple, readable Python code for this project. Prioritize maintainability over performance. Follow "fail fast" principle.
+
+### Key Rules
+
+1. **NO Exception Handling Unless Absolutely Necessary**
+   - Let errors crash immediately with clear messages
+   - Only catch exceptions for external APIs or expected business logic
+   - Never use bare `except:` or silent failures
+
+2. **Simple and Direct**
+   - Prefer functions over classes where possible
+   - No unnecessary design patterns or abstractions
+   - Maximum 20 lines per function
+   - Each function does ONE thing
+   - Flat structure - avoid deeply nested code
+
+3. **Minimum Code**
+   - Every line must have clear purpose
+   - Use Python built-ins and standard library
+   - Delete code instead of commenting out
+   - No boilerplate
+
+4. **Readability First**
+   - Full descriptive names, no abbreviations
+   - Early returns to reduce nesting
+   - Self-documenting code
+   - F-strings for formatting
+
+### Error Handling Philosophy
+
+This codebase follows a "fail fast" approach:
+- Errors crash immediately with clear messages rather than being silently handled
+- Only catch exceptions for external APIs (AI CLI calls) or expected business logic
+- Use custom exceptions like `AnalysisError` for domain-specific failures
+- Let Python's built-in exceptions bubble up for programming errors
+
+### Code Style Examples
+
+```python
+# GOOD - Simple and clear
+def calculate_total_files(file_paths):
+    if not file_paths:
+        return 0
+    return len([p for p in file_paths if p.is_file()])
+
+# AVOID - Over-engineered for this project size
+class FileCounter:
+    def __init__(self):
+        self.validator = PathValidator()
+    
+    def count(self, paths):
+        try:
+            validated = self.validator.validate(paths)
+            return self._count_files(validated)
+        except Exception:
+            return 0
+```
 
 ## Development Notes
 
