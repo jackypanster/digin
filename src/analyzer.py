@@ -123,131 +123,85 @@ class CodebaseAnalyzer:
     
     def _analyze_directory(self, directory: Path, root_path: Path, 
                           completed_digests: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """Analyze a single directory.
-        
-        Args:
-            directory: Directory to analyze
-            root_path: Root path of analysis  
-            completed_digests: Already completed directory digests
+        """Analyze a single directory."""
+        cached = self._check_cache(directory)
+        if cached:
+            return cached
             
-        Returns:
-            Directory digest or None if analysis failed
-        """
-        # Check cache first
-        if self.settings.cache_enabled:
-            cached_digest = self.cache_manager.get_cached_digest(directory)
-            if cached_digest:
-                self.stats["cache_hits"] += 1
-                return cached_digest
-        
-        self.stats["cache_misses"] += 1
-        
-        # Collect directory information
         directory_info = self.traverser.collect_directory_info(directory)
         self.stats["total_files"] += directory_info.get("total_files", 0)
         
-        # Get child digests for aggregation
         child_digests = self._get_child_digests(directory, completed_digests)
         
-        # Determine if this is a leaf directory
-        is_leaf = not child_digests
-        
-        if is_leaf:
-            # Leaf directory: analyze with AI
+        if not child_digests:
             digest = self._analyze_leaf_directory(directory_info)
         else:
-            # Parent directory: aggregate child summaries
             digest = self._analyze_parent_directory(directory, child_digests, directory_info)
         
-        # Save to cache if successful
-        if digest and self.settings.cache_enabled:
-            self.cache_manager.save_digest(directory, digest)
-        
+        self._save_to_cache(directory, digest)
         return digest
     
+    def _check_cache(self, directory: Path) -> Optional[Dict[str, Any]]:
+        """Check cache for existing digest."""
+        if not self.settings.cache_enabled:
+            self.stats["cache_misses"] += 1
+            return None
+            
+        cached_digest = self.cache_manager.get_cached_digest(directory)
+        if cached_digest:
+            self.stats["cache_hits"] += 1
+            return cached_digest
+            
+        self.stats["cache_misses"] += 1
+        return None
+    
+    def _save_to_cache(self, directory: Path, digest: Optional[Dict[str, Any]]) -> None:
+        """Save digest to cache if enabled and digest exists."""
+        if digest and self.settings.cache_enabled:
+            self.cache_manager.save_digest(directory, digest)
+    
     def _analyze_leaf_directory(self, directory_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Analyze leaf directory using AI.
+        """Analyze leaf directory using AI."""
+        self.stats["ai_calls"] += 1
         
-        Args:
-            directory_info: Information about the directory
-            
-        Returns:
-            AI analysis digest or None if failed
-        """
         try:
-            self.stats["ai_calls"] += 1
             digest = self.ai_client.analyze_directory(directory_info)
-            
-            if not digest:
-                if self.settings.verbose:
-                    print(f"AI analysis returned no result for {directory_info.get('path')}")
+            if not digest or not isinstance(digest, dict):
                 return None
-            
-            # Validate digest has required fields
-            if not isinstance(digest, dict):
-                if self.settings.verbose:
-                    print(f"AI analysis returned invalid format for {directory_info.get('path')}")
-                return None
-            
-            # Ensure basic required fields
-            if "name" not in digest:
-                digest["name"] = directory_info.get("name", "unknown")
-            if "path" not in digest:
-                digest["path"] = directory_info.get("path", "")
-            
+                
+            self._ensure_required_fields(digest, directory_info)
             return digest
             
-        except AIClientError as e:
-            if self.settings.verbose:
-                print(f"AI client error: {e}")
+        except AIClientError:
             return None
-        except Exception as e:
-            if self.settings.verbose:
-                print(f"Unexpected error in AI analysis: {e}")
-            return None
+    
+    def _ensure_required_fields(self, digest: Dict[str, Any], directory_info: Dict[str, Any]) -> None:
+        """Ensure digest has required fields."""
+        if "name" not in digest:
+            digest["name"] = directory_info.get("name", "unknown")
+        if "path" not in digest:
+            digest["path"] = directory_info.get("path", "")
     
     def _analyze_parent_directory(self, directory: Path, child_digests: List[Dict[str, Any]], 
                                  directory_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Analyze parent directory by aggregating children.
-        
-        Args:
-            directory: Parent directory
-            child_digests: Child directory digests
-            directory_info: Information about direct files in parent
-            
-        Returns:
-            Aggregated digest
-        """
-        try:
-            return self.aggregator.aggregate_summaries(
-                directory, child_digests, directory_info
-            )
-        except Exception as e:
-            if self.settings.verbose:
-                print(f"Aggregation error for {directory}: {e}")
-            return None
+        """Analyze parent directory by aggregating children."""
+        return self.aggregator.aggregate_summaries(directory, child_digests, directory_info)
     
     def _get_child_digests(self, directory: Path, 
                           completed_digests: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Get digests for child directories.
-        
-        Args:
-            directory: Parent directory
-            completed_digests: Map of completed digests
-            
-        Returns:
-            List of child directory digests
-        """
+        """Get digests for child directories."""
         child_digests = []
         
         try:
             for item in directory.iterdir():
-                if (item.is_dir() and 
-                    not self.traverser._should_ignore_directory(item)):
+                if not item.is_dir():
+                    continue
+                if self.traverser._should_ignore_directory(item):
+                    continue
                     
-                    child_digest = completed_digests.get(str(item))
-                    if child_digest:
-                        child_digests.append(child_digest)
+                child_digest = completed_digests.get(str(item))
+                if child_digest:
+                    child_digests.append(child_digest)
         except PermissionError:
             pass
         

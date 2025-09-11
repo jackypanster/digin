@@ -11,7 +11,7 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from .config import DigginSettings
 
@@ -69,9 +69,7 @@ class CacheManager:
             
             return digest
             
-        except (FileNotFoundError, json.JSONDecodeError, PermissionError) as e:
-            if self.settings.verbose:
-                print(f"Cache load failed for {directory}: {e}")
+        except (FileNotFoundError, json.JSONDecodeError, PermissionError):
             return None
     
     def save_digest(self, directory: Path, digest: Dict[str, Any]) -> None:
@@ -99,9 +97,8 @@ class CacheManager:
             if self.settings.verbose:
                 print(f"Cached digest for {directory}")
                 
-        except (PermissionError, OSError) as e:
-            if self.settings.verbose:
-                print(f"Cache save failed for {directory}: {e}")
+        except (PermissionError, OSError):
+            pass
     
     def clear_cache(self, directory: Path, recursive: bool = False) -> None:
         """Clear cache files for directory.
@@ -131,17 +128,17 @@ class CacheManager:
                     clear_single_dir(item)
     
     def _calculate_directory_hash(self, directory: Path) -> str:
-        """Calculate hash for directory contents.
-        
-        Args:
-            directory: Directory to hash
-            
-        Returns:
-            SHA-256 hash of directory contents
-        """
+        """Calculate hash for directory contents."""
         hasher = hashlib.sha256()
+        files_to_hash = self._get_files_to_hash(directory)
         
-        # Get all relevant files sorted by path for consistent hashing
+        for file_path in files_to_hash:
+            self._hash_single_file(hasher, file_path, directory)
+        
+        return hasher.hexdigest()
+    
+    def _get_files_to_hash(self, directory: Path) -> List[Path]:
+        """Get sorted list of files to include in hash."""
         files_to_hash = []
         
         try:
@@ -152,34 +149,32 @@ class CacheManager:
             pass
         
         files_to_hash.sort(key=lambda p: str(p))
-        
-        # Hash each file's metadata and content
-        for file_path in files_to_hash:
-            try:
-                # Include file path relative to directory
-                rel_path = file_path.relative_to(directory)
-                hasher.update(str(rel_path).encode('utf-8'))
+        return files_to_hash
+    
+    def _hash_single_file(self, hasher: hashlib.sha256, file_path: Path, directory: Path) -> None:
+        """Hash a single file's metadata and optionally content."""
+        try:
+            rel_path = file_path.relative_to(directory)
+            hasher.update(str(rel_path).encode('utf-8'))
+            
+            stat = file_path.stat()
+            hasher.update(str(stat.st_mtime).encode('utf-8'))
+            hasher.update(str(stat.st_size).encode('utf-8'))
+            
+            if stat.st_size <= 8192 and self._is_text_file(file_path):
+                self._hash_file_content(hasher, file_path)
                 
-                # Include file metadata
-                stat = file_path.stat()
-                hasher.update(str(stat.st_mtime).encode('utf-8'))
-                hasher.update(str(stat.st_size).encode('utf-8'))
-                
-                # For small text files, include content hash
-                if (stat.st_size <= 8192 and 
-                    self._is_text_file(file_path)):
-                    try:
-                        with open(file_path, 'rb') as f:
-                            content = f.read()
-                            hasher.update(content)
-                    except (UnicodeDecodeError, PermissionError):
-                        # Just use metadata if content can't be read
-                        pass
-                        
-            except (OSError, PermissionError):
-                continue
-        
-        return hasher.hexdigest()
+        except (OSError, PermissionError):
+            pass
+    
+    def _hash_file_content(self, hasher: hashlib.sha256, file_path: Path) -> None:
+        """Hash file content for small text files."""
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+                hasher.update(content)
+        except (UnicodeDecodeError, PermissionError):
+            pass
     
     def _should_ignore_for_hash(self, file_path: Path) -> bool:
         """Check if file should be ignored when calculating hash.
@@ -270,7 +265,7 @@ class CacheManager:
                             stats["cached_digests"] += 1
                         else:
                             stats["invalid_caches"] += 1
-                    except Exception:
+                    except (OSError, PermissionError):
                         stats["invalid_caches"] += 1
                 else:
                     stats["missing_hashes"] += 1
