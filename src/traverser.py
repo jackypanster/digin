@@ -65,57 +65,55 @@ class DirectoryTraverser:
         return sorted(leaf_dirs)
     
     def get_analysis_order(self, root_path: Path) -> List[Path]:
-        """Get directories in bottom-up analysis order.
-        
-        Args:
-            root_path: Root directory to analyze
-            
-        Returns:
-            List of directories in analysis order (leaf to root)
-        """
-        # Start with leaf directories
+        """Get directories in bottom-up analysis order."""
         leaf_dirs = self.find_leaf_directories(root_path)
         analysis_order = leaf_dirs.copy()
-        
-        # Add parent directories level by level
         processed = set(leaf_dirs)
         current_level = leaf_dirs
         
         while current_level:
-            next_level = []
-            for directory in current_level:
-                parent = directory.parent
-                
-                # Skip if parent is root or already processed
-                if (parent == root_path.parent or 
-                    parent in processed or
-                    self._should_ignore_directory(parent)):
-                    continue
-                
-                # Check if all children of this parent have been processed
-                all_children_processed = True
-                try:
-                    for child in parent.iterdir():
-                        if (child.is_dir() and 
-                            not self._should_ignore_directory(child) and
-                            child not in processed):
-                            all_children_processed = False
-                            break
-                except PermissionError:
-                    continue
-                
-                if all_children_processed and parent not in next_level:
-                    next_level.append(parent)
-                    processed.add(parent)
-            
+            next_level = self._get_next_level_parents(current_level, processed, root_path)
             analysis_order.extend(next_level)
             current_level = next_level
         
-        # Ensure root directory is last if not already included
         if root_path not in analysis_order:
             analysis_order.append(root_path)
             
         return analysis_order
+    
+    def _get_next_level_parents(self, current_level: List[Path], processed: set, root_path: Path) -> List[Path]:
+        """Get parent directories ready for next level processing."""
+        next_level = []
+        
+        for directory in current_level:
+            parent = directory.parent
+            
+            if self._should_skip_parent(parent, root_path, processed):
+                continue
+                
+            if self._all_children_processed(parent, processed) and parent not in next_level:
+                next_level.append(parent)
+                processed.add(parent)
+        
+        return next_level
+    
+    def _should_skip_parent(self, parent: Path, root_path: Path, processed: set) -> bool:
+        """Check if parent should be skipped."""
+        return (parent == root_path.parent or 
+                parent in processed or
+                self._should_ignore_directory(parent))
+    
+    def _all_children_processed(self, parent: Path, processed: set) -> bool:
+        """Check if all children of parent have been processed."""
+        try:
+            for child in parent.iterdir():
+                if (child.is_dir() and 
+                    not self._should_ignore_directory(child) and
+                    child not in processed):
+                    return False
+            return True
+        except PermissionError:
+            return False
     
     def collect_directory_info(self, directory: Path) -> Dict[str, Any]:
         """Collect detailed information about a directory.
