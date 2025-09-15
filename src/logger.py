@@ -9,6 +9,7 @@
 设计重点：为调试和审计提供详尽信息，同时控制磁盘使用（自动轮换+压缩）。
 """
 
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -46,6 +47,9 @@ class DigginLogger:
         backup_count: int = 5,
         log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         ai_command_logging: bool = True,
+        ai_log_format: str = "readable",
+        ai_log_detail_level: str = "summary",
+        ai_log_prompt_max_chars: int = 200,
     ) -> None:
         """设置日志系统配置。
 
@@ -56,7 +60,15 @@ class DigginLogger:
             backup_count: 保留的轮换文件数量
             log_format: 日志格式字符串
             ai_command_logging: 是否启用 AI 命令专用日志
+            ai_log_format: AI 日志格式 ("readable" 或 "json")
+            ai_log_detail_level: AI 日志详细程度 ("summary" 或 "full")
+            ai_log_prompt_max_chars: 提示词显示最大字符数
         """
+        # 保存配置
+        self.ai_log_format = ai_log_format
+        self.ai_log_detail_level = ai_log_detail_level
+        self.ai_log_prompt_max_chars = ai_log_prompt_max_chars
+
         # 创建日志目录
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
@@ -83,17 +95,34 @@ class DigginLogger:
 
         # 创建 AI 命令专用日志器
         if ai_command_logging:
-            ai_formatter = logging.Formatter(
-                "%(asctime)s - AI_COMMAND - %(levelname)s - %(message)s"
-            )
-            self._create_logger(
-                "digin.ai_commands",
-                "ai_commands.log",
-                numeric_level,
-                ai_formatter,
-                max_bytes,
-                backup_count,
-            )
+            if ai_log_format == "readable":
+                # 创建人类可读格式的 AI 命令日志器
+                self._create_ai_readable_logger(numeric_level, max_bytes, backup_count)
+            else:
+                # 创建 JSON 格式的 AI 命令日志器（保持原有格式）
+                ai_formatter = logging.Formatter(
+                    "%(asctime)s - AI_COMMAND - %(levelname)s - %(message)s"
+                )
+                self._create_logger(
+                    "digin.ai_commands",
+                    "ai_commands.log",
+                    numeric_level,
+                    ai_formatter,
+                    max_bytes,
+                    backup_count,
+                )
+
+            # 始终创建详细日志器（JSONL 格式）
+            if ai_log_detail_level == "full":
+                detailed_formatter = logging.Formatter("%(message)s")
+                self._create_logger(
+                    "digin.ai_commands_detailed",
+                    "ai_commands_detailed.jsonl",
+                    numeric_level,
+                    detailed_formatter,
+                    max_bytes,
+                    backup_count,
+                )
 
         # 创建错误专用日志器
         error_formatter = logging.Formatter(
@@ -143,6 +172,39 @@ class DigginLogger:
         self.loggers[name] = logger
         return logger
 
+    def _create_ai_readable_logger(self, level: int, max_bytes: int, backup_count: int) -> logging.Logger:
+        """创建人类可读的 AI 命令日志器。"""
+        logger = logging.getLogger("digin.ai_commands")
+        logger.setLevel(level)
+
+        # 避免重复添加处理器
+        if logger.handlers:
+            return logger
+
+        # 创建自定义格式化器（不使用标准格式）
+        class AIReadableFormatter(logging.Formatter):
+            def format(self, record):
+                # 直接返回消息内容，不添加时间戳等前缀
+                return record.getMessage()
+
+        # 创建轮换文件处理器
+        handler = logging.handlers.RotatingFileHandler(
+            filename=self.log_dir / "ai_commands.log",
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+        handler.setLevel(level)
+        handler.setFormatter(AIReadableFormatter())
+
+        logger.addHandler(handler)
+
+        # Ensure handler flushes immediately
+        handler.flush()
+
+        self.loggers["digin.ai_commands"] = logger
+        return logger
+
     def _parse_file_size(self, size_str: str) -> int:
         """解析文件大小字符串为字节数。"""
         size_str = size_str.upper().strip()
@@ -154,6 +216,61 @@ class DigginLogger:
             return int(size_str[:-2]) * 1024 * 1024 * 1024
         else:
             return int(size_str)
+
+    def _hash_prompt(self, prompt: str) -> str:
+        """计算提示词的 SHA256 哈希值。"""
+        return hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:12]
+
+    def _truncate_prompt(self, prompt: str, max_chars: int = None) -> str:
+        """截断提示词到指定长度。"""
+        if max_chars is None:
+            max_chars = self.ai_log_prompt_max_chars
+
+        if len(prompt) <= max_chars:
+            return prompt
+
+        return prompt[:max_chars] + "..."
+
+    def _format_readable_ai_log(
+        self,
+        provider: str,
+        command: list,
+        prompt: str,
+        directory: str,
+        success: bool,
+        duration_ms: int,
+        prompt_size: int,
+        response_size: int,
+        error_msg: str = "",
+    ) -> str:
+        """格式化人类可读的 AI 命令日志。"""
+        status_icon = "✅ SUCCESS" if success else "❌ FAILED"
+        prompt_hash = self._hash_prompt(prompt)
+        prompt_preview = self._truncate_prompt(prompt)
+
+        duration_str = f"{duration_ms / 1000:.2f} seconds"
+        if duration_ms >= 120000:  # 2+ minutes
+            duration_str += " (SLOW)"
+
+        log_entry = f"""
+{'=' * 80}
+[{datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}] AI COMMAND: {provider.upper()}
+{'=' * 80}
+Status:     {status_icon}
+Directory:  {directory}
+Model:      {command[2] if len(command) > 2 and command[1] == '-m' else 'default'}
+Duration:   {duration_str}
+Prompt:     [{prompt_size} chars] {prompt_preview}
+Response:   [{response_size} chars]
+Hash:       {prompt_hash}
+Command:    {' '.join(command)}"""
+
+        if not success and error_msg:
+            log_entry += f"\nError:      {error_msg}"
+
+        log_entry += "\n" + "-" * 80 + "\n"
+
+        return log_entry
 
     def get_logger(self, component: str = "main") -> logging.Logger:
         """获取指定组件的日志器。
@@ -180,6 +297,7 @@ class DigginLogger:
         success: bool = True,
         response_size: int = 0,
         error_msg: str = "",
+        prompt: str = "",
     ) -> None:
         """记录 AI 命令执行详情。
 
@@ -192,34 +310,80 @@ class DigginLogger:
             success: 是否执行成功
             response_size: 响应内容大小
             error_msg: 错误信息（如果失败）
+            prompt: 完整提示词内容（用于可读格式日志）
         """
         logger = self.get_logger("ai_commands")
         duration_ms = int((time.time() - start_time) * 1000)
 
-        # 创建结构化日志数据
-        log_data = {
-            "provider": provider,
-            "command": " ".join(command),
-            "command_args": command[1:],  # 除了二进制名的参数
-            "prompt_size": prompt_size,
-            "response_size": response_size,
-            "duration_ms": duration_ms,
-            "directory": directory,
-            "success": success,
-            "timestamp": datetime.now().isoformat(),
-        }
+        # 根据配置选择日志格式
+        if hasattr(self, 'ai_log_format') and self.ai_log_format == "readable":
+            # 使用人类可读格式
+            readable_log = self._format_readable_ai_log(
+                provider=provider,
+                command=command,
+                prompt=prompt,
+                directory=directory,
+                success=success,
+                duration_ms=duration_ms,
+                prompt_size=prompt_size,
+                response_size=response_size,
+                error_msg=error_msg,
+            )
 
-        if not success and error_msg:
-            log_data["error"] = error_msg
-
-        # 记录为格式化的 JSON 以便后续分析
-        json_str = json.dumps(log_data, ensure_ascii=False, separators=(",", ":"))
-
-        if success:
-            logger.info(json_str)
+            if success:
+                logger.info(readable_log)
+            else:
+                logger.error(readable_log)
         else:
-            logger.error(json_str)
-            # 同时记录到错误日志
+            # 使用原有的 JSON 格式
+            log_data = {
+                "provider": provider,
+                "command": " ".join(command),
+                "command_args": command[1:],  # 除了二进制名的参数
+                "prompt_size": prompt_size,
+                "response_size": response_size,
+                "duration_ms": duration_ms,
+                "directory": directory,
+                "success": success,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            if not success and error_msg:
+                log_data["error"] = error_msg
+
+            # 记录为格式化的 JSON 以便后续分析
+            json_str = json.dumps(log_data, ensure_ascii=False, separators=(",", ":"))
+
+            if success:
+                logger.info(json_str)
+            else:
+                logger.error(json_str)
+
+        # 记录详细的 JSONL 格式（如果启用）
+        if hasattr(self, 'ai_log_detail_level') and self.ai_log_detail_level == "full":
+            detailed_logger = self.get_logger("ai_commands_detailed")
+            if detailed_logger:
+                detailed_data = {
+                    "timestamp": datetime.now().isoformat(),
+                    "provider": provider,
+                    "status": "success" if success else "failed",
+                    "directory": directory,
+                    "model": command[2] if len(command) > 2 and command[1] == '-m' else 'default',
+                    "prompt_hash": self._hash_prompt(prompt) if prompt else "",
+                    "prompt_preview": self._truncate_prompt(prompt, 100) if prompt else "",
+                    "prompt_size": prompt_size,
+                    "response_size": response_size,
+                    "duration_ms": duration_ms,
+                }
+
+                if not success and error_msg:
+                    detailed_data["error"] = error_msg
+
+                detailed_json = json.dumps(detailed_data, ensure_ascii=False, separators=(",", ":"))
+                detailed_logger.info(detailed_json)
+
+        # 同时记录错误到错误日志
+        if not success:
             self.get_logger("errors").error(
                 f"AI command failed - Provider: {provider}, Directory: {directory}, Error: {error_msg}"
             )

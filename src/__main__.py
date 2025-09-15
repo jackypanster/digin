@@ -72,6 +72,9 @@ def initialize_logging(settings: DigginSettings) -> None:
             backup_count=settings.logging.backup_count,
             log_format=settings.logging.format,
             ai_command_logging=settings.logging.ai_command_logging,
+            ai_log_format=settings.logging.ai_log_format,
+            ai_log_detail_level=settings.logging.ai_log_detail_level,
+            ai_log_prompt_max_chars=settings.logging.ai_log_prompt_max_chars,
         )
         logger = get_logger("main")
         logger.info(f"Digin v{__version__} starting up")
