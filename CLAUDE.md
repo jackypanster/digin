@@ -30,7 +30,7 @@ uv run python -m src /path/to/analyze
 
 # After installation, use the digin command
 digin /path/to/analyze
-digin /path/to/analyze --provider gemini --verbose
+digin /path/to/analyze --provider claude --verbose
 
 # Common usage patterns
 python -m src . --dry-run                    # Preview analysis plan
@@ -129,7 +129,7 @@ Default configuration is in `config/default.json`. Users can override with `.dig
 - `ignore_dirs`: Directories to skip (node_modules, .git, etc.)
 - `ignore_files`: File patterns to ignore (*.pyc, *.log, etc.) 
 - `include_extensions`: File extensions to analyze
-- `api_provider`: AI provider (claude/gemini)
+- `api_provider`: AI provider (gemini/claude, default: gemini)
 - `cache_enabled`: Whether to use digest caching
 - `max_depth`: Maximum directory depth to analyze
 

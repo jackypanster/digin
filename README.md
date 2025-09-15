@@ -37,8 +37,8 @@ digin
 # 分析指定目录
 digin /path/to/project
 
-# 使用 Gemini（默认 Claude）
-digin /path/to/project --provider gemini
+# 使用 Claude（默认 Gemini）
+digin /path/to/project --provider claude
 
 # 强制刷新（忽略缓存）
 digin /path/to/project --force
