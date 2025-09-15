@@ -8,7 +8,7 @@ Digin 包入口與對外 API。
 用途：既支持命令行使用，也便於程序化集成到現有工作流。
 """
 
-from .analyzer import CodebaseAnalyzer
 from .__main__ import main
+from .analyzer import CodebaseAnalyzer
 
 __all__ = ["CodebaseAnalyzer", "main"]

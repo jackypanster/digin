@@ -30,7 +30,7 @@ uv run python -m src /path/to/analyze
 
 # After installation, use the digin command
 digin /path/to/analyze
-digin /path/to/analyze --provider gemini --verbose
+digin /path/to/analyze --provider claude --verbose
 
 # Common usage patterns
 python -m src . --dry-run                    # Preview analysis plan
@@ -39,9 +39,18 @@ python -m src . --output-format json        # JSON output format
 ```
 
 ### Testing
+
+**CRITICAL PRINCIPLE**: All tests MUST use real Claude and Gemini CLI commands. NO mocking or fake data is allowed for AI functionality testing.
+
 ```bash
-# Run all tests
+# Run all tests (includes real AI calls)
 uv run pytest
+
+# Run only unit tests (no AI calls)
+uv run pytest -m "unit and not real_ai"
+
+# Run only real AI tests (requires claude and gemini CLI installed)
+uv run pytest -m real_ai
 
 # Run tests with coverage
 uv run pytest --cov=src --cov-report=html
@@ -53,13 +62,21 @@ uv run pytest tests/test_analyzer.py
 uv run pytest tests/test_analyzer.py::test_analyze_directory -v
 
 # Run tests by category (using markers)
-uv run pytest -m unit          # Unit tests only
-uv run pytest -m integration   # Integration tests only
-uv run pytest -m "not slow"    # Skip slow tests
+uv run pytest -m unit              # Unit tests only
+uv run pytest -m integration       # Integration tests only
+uv run pytest -m real_ai           # Real AI CLI tests only
+uv run pytest -m "not slow"        # Skip slow tests
+uv run pytest -m "not real_ai"     # Skip real AI tests (for CI without API keys)
 
 # Run tests in verbose mode
 uv run pytest -v
 ```
+
+**Test Markers:**
+- `unit`: Pure unit tests with no external dependencies
+- `integration`: Integration tests with file system or other components
+- `real_ai`: Tests that make actual calls to Claude/Gemini CLI (requires installation)
+- `slow`: Tests that take significant time to run
 
 ### Code Quality
 ```bash
@@ -129,7 +146,7 @@ Default configuration is in `config/default.json`. Users can override with `.dig
 - `ignore_dirs`: Directories to skip (node_modules, .git, etc.)
 - `ignore_files`: File patterns to ignore (*.pyc, *.log, etc.) 
 - `include_extensions`: File extensions to analyze
-- `api_provider`: AI provider (claude/gemini)
+- `api_provider`: AI provider (gemini/claude, default: gemini)
 - `cache_enabled`: Whether to use digest caching
 - `max_depth`: Maximum directory depth to analyze
 
@@ -137,6 +154,28 @@ Default configuration is in `config/default.json`. Users can override with `.dig
 
 ### Core Philosophy
 Write simple, readable Python code for this project. Prioritize maintainability over performance. Follow "fail fast" principle.
+
+### Testing Philosophy - REAL AI COMMANDS ONLY
+
+**CRITICAL RULE**: This project MUST test with real Claude and Gemini CLI commands. No mocking, stubbing, or fake data is permitted for AI functionality.
+
+**Why this matters:**
+- AI CLI behavior can change with updates
+- Real prompts may fail in ways mocks cannot simulate
+- Response parsing must handle actual AI output variations
+- Integration issues only surface with real commands
+
+**Implementation Requirements:**
+- All AI client tests marked with `@pytest.mark.real_ai`
+- Tests must verify actual Claude/Gemini CLI installation and availability
+- Test failures with real AI indicate actual integration problems
+- Mock only non-AI components (file system, config, etc.)
+
+**Developer Setup:**
+- Install `claude` and `gemini` CLI tools locally
+- Verify with: `claude --version` and `gemini --version`
+- Run AI tests: `uv run pytest -m real_ai`
+- For CI/environments without AI tools: `uv run pytest -m "not real_ai"`
 
 ### Key Rules
 

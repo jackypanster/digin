@@ -52,9 +52,9 @@
   ],
   "ignore_hidden": true,
   "max_file_size": "1MB",
-  "api_provider": "claude",
+  "api_provider": "gemini",
   "api_options": {
-    "model": "claude-3-sonnet",
+    "model": "gemini-1.5-pro",
     "append_system_prompt": "只输出JSON格式，严格按照Schema定义"
   },
   "cache_enabled": true,
