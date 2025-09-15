@@ -187,11 +187,15 @@ class DirectoryTraverser:
                 "is_text": self._is_text_file(file_path),
             }
 
-            # Add content preview for small text files
-            if file_info["is_text"] and stat.st_size <= 8192:  # 8KB preview limit
+            # Add content preview for text files with generous limits for AI analysis
+            # Use larger limits for modern AI models with large context windows
+            max_file_size = 100 * 1024  # 100KB per file (up from 8KB)
+            max_content_read = 50 * 1024  # Read up to 50KB per file (up from 2KB)
+
+            if file_info["is_text"] and stat.st_size <= max_file_size:
                 try:
                     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read(2048)  # First 2KB
+                        content = f.read(max_content_read)
                         if content.strip():
                             file_info["content_preview"] = content
                 except (UnicodeDecodeError, PermissionError):

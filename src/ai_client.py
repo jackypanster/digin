@@ -147,12 +147,36 @@ class ClaudeClient(BaseAIClient):
     def _format_code_snippets(self, files: List[Dict[str, Any]]) -> str:
         """Format code snippets for prompt."""
         code_snippets = []
-        for file_info in files[:5]:  # First 5 files only
-            if "content_preview" in file_info:
-                content = file_info["content_preview"]
-                code_snippets.append(f"**{file_info['name']}**:\n```\n{content}\n```")
 
-        return "\n\n".join(code_snippets) if code_snippets else "无代码预览"
+        # For Gemini with 1M token context, include more files
+        # Prioritize files with content and reasonable size
+        files_with_content = [f for f in files if "content_preview" in f]
+
+        # Include up to 20 files (or all if fewer) to leverage large context windows
+        max_files = min(20, len(files_with_content))
+
+        for file_info in files_with_content[:max_files]:
+            content = file_info["content_preview"]
+            file_ext = file_info.get("extension", "")
+
+            # Add language hint for better syntax highlighting
+            lang_map = {
+                '.py': 'python', '.js': 'javascript', '.ts': 'typescript',
+                '.java': 'java', '.cpp': 'cpp', '.c': 'c', '.rs': 'rust',
+                '.go': 'go', '.rb': 'ruby', '.php': 'php', '.cs': 'csharp',
+                '.vue': 'vue', '.jsx': 'jsx', '.tsx': 'tsx', '.sql': 'sql',
+                '.sh': 'bash', '.yml': 'yaml', '.yaml': 'yaml', '.json': 'json',
+                '.xml': 'xml', '.html': 'html', '.css': 'css', '.scss': 'scss',
+                '.md': 'markdown', '.dockerfile': 'dockerfile', '.tf': 'terraform'
+            }
+            lang = lang_map.get(file_ext.lower(), '')
+
+            code_snippets.append(f"**{file_info['name']}** ({file_info.get('size', 0)} bytes):\n```{lang}\n{content}\n```")
+
+        if not code_snippets:
+            return "无代码内容或所有文件都是二进制文件"
+
+        return "\n\n".join(code_snippets)
 
     def _format_children_digests(self, children_digests: List[Dict[str, Any]]) -> str:
         """Format children digests for prompt."""
