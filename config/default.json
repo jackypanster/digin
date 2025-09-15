@@ -60,5 +60,14 @@
   "cache_enabled": true,
   "parallel_workers": 1,
   "max_depth": 10,
-  "verbose": false
+  "verbose": false,
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "log_dir": "logs",
+    "max_file_size": "10MB",
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "ai_command_logging": true
+  }
 }

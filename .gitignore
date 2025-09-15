@@ -151,10 +151,15 @@ Thumbs.db
 # Project specific
 *.hash
 digest.json
-errors.log
+.digin_hash
 .digin.json
 temp/
 tmp/
+
+# Logging files
+logs/
+*.log
+!logs/README.md
 
 # Test outputs
 test_outputs/

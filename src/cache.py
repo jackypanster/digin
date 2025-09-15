@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import DigginSettings
+from .logger import get_logger
 
 
 class CacheManager:
@@ -27,6 +28,7 @@ class CacheManager:
         """
         self.settings = settings
         self.cache_enabled = settings.cache_enabled
+        self.logger = get_logger("cache")
 
     def get_cached_digest(self, directory: Path) -> Optional[Dict[str, Any]]:
         """Get cached digest for directory if still valid.
@@ -38,6 +40,7 @@ class CacheManager:
             Cached digest dictionary or None if not cached/invalid
         """
         if not self.cache_enabled:
+            self.logger.debug(f"Cache disabled, skipping lookup for: {directory}")
             return None
 
         digest_path = directory / "digest.json"
@@ -45,6 +48,7 @@ class CacheManager:
 
         # Check if both files exist
         if not (digest_path.exists() and hash_path.exists()):
+            self.logger.debug(f"Cache files missing for: {directory}")
             return None
 
         try:
@@ -58,18 +62,21 @@ class CacheManager:
             # Compare hashes
             if stored_hash != current_hash:
                 # Content changed, cache invalid
+                self.logger.debug(f"Cache invalid (hash mismatch) for: {directory}")
                 return None
 
             # Load and return cached digest
             with open(digest_path, "r", encoding="utf-8") as f:
                 digest = json.load(f)
 
+            self.logger.debug(f"Cache hit for: {directory}")
             if self.settings.verbose:
                 print(f"Cache hit for {directory}")
 
             return digest
 
-        except (FileNotFoundError, json.JSONDecodeError, PermissionError):
+        except (FileNotFoundError, json.JSONDecodeError, PermissionError) as e:
+            self.logger.debug(f"Cache read error for {directory}: {e}")
             return None
 
     def save_digest(self, directory: Path, digest: Dict[str, Any]) -> None:
@@ -80,6 +87,7 @@ class CacheManager:
             digest: Analysis digest to save
         """
         if not self.cache_enabled:
+            self.logger.debug(f"Cache disabled, skipping save for: {directory}")
             return
 
         try:
@@ -94,10 +102,12 @@ class CacheManager:
             with open(hash_path, "w", encoding="utf-8") as f:
                 f.write(directory_hash)
 
+            self.logger.debug(f"Saved cache for: {directory}")
             if self.settings.verbose:
                 print(f"Cached digest for {directory}")
 
-        except (PermissionError, OSError):
+        except (PermissionError, OSError) as e:
+            self.logger.warning(f"Failed to save cache for {directory}: {e}")
             pass
 
     def clear_cache(self, directory: Path, recursive: bool = False) -> None:
