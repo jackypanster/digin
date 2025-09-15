@@ -1,92 +1,85 @@
-你是严谨的软件考古助手。分析当前目录，输出标准JSON。
-
-## 分析上下文
+请像资深开发者一样理解这个目录的作用，用JSON格式总结你的发现。
 
 **目录路径**: {directory_path}
-**直接文件**: 
+
+**包含的文件**:
 {file_list}
 
-**关键代码片段**:
+**代码片段**:
 {code_snippets}
 
-**子目录摘要**:
+**子目录情况**:
 {children_digests}
 
 ## 输出要求
 
-1. **只输出JSON**，无任何额外文字或解释
-2. **基于证据推断**，不确定的字段直接省略
-3. **用通俗语言**描述功能意图，避免技术术语堆砌
-4. **confidence字段**反映分析的确定程度（0-100）
+1. **只输出JSON**，不要任何额外解释
+2. **只写你确定的**，不确定的别瞎猜
+3. **说人话**，像给同事介绍代码一样，用中文描述
+4. **confidence** 表示把握程度（0-100分）
 
-## JSON Schema
+## JSON格式示例
 
 {{
-  "name": "string - 目录名称",
-  "path": "string - 相对于根目录的路径", 
-  "kind": "service|lib|ui|infra|config|test|docs|unknown - 目录类型",
-  "summary": "string - 功能概述（人话描述）",
-  "capabilities": ["string - 核心能力列表"],
+  "name": "目录名称",
+  "path": "相对路径",
+  "kind": "service|lib|ui|infra|config|test|docs|unknown",
+  "summary": "它是做什么的（用人话说）",
+  "capabilities": ["主要功能1", "主要功能2"],
   "public_interfaces": {{
-    "http": [{{"method": "string", "path": "string", "handler": "string", "evidence": ["string"]}}],
-    "rpc": [{{"service": "string", "method": "string", "evidence": ["string"]}}],
-    "cli": [{{"cmd": "string", "evidence": ["string"]}}],
-    "api": [{{"function": "string", "signature": "string", "evidence": ["string"]}}]
+    "http": [{{"method": "GET", "path": "/api/xxx", "handler": "function_name"}}],
+    "rpc": [{{"service": "ServiceName", "method": "methodName"}}],
+    "cli": [{{"cmd": "command_name"}}],
+    "api": [{{"function": "function_name", "signature": "func(args) -> result"}}]
   }},
   "dependencies": {{
-    "internal": ["string - 内部依赖"],
-    "external": ["string - 外部依赖"]
+    "internal": ["项目内其他模块"],
+    "external": ["第三方库名"]
   }},
   "configuration": {{
-    "env": ["string - 环境变量"],
-    "files": ["string - 配置文件"]
+    "env": ["环境变量名"],
+    "files": ["配置文件名"]
   }},
-  "risks": ["string - 潜在风险"],
+  "risks": ["可能的问题或风险"],
   "evidence": {{
-    "files": ["string - 证据文件列表"]
+    "files": ["支持结论的文件"]
   }},
-  "confidence": "number - 分析置信度 0-100",
-  "analyzed_at": "string - 分析时间 ISO 8601",
-  "analyzer_version": "string - 工具版本"
+  "confidence": 85
 }}
 
-## 分析规则
+## 理解思路
 
-- **kind分类**：根据目录内容和结构判断类型
-  - service: 业务服务模块
-  - lib: 通用库和工具
-  - ui: 用户界面组件
-  - infra: 基础设施代码
-  - config: 配置相关
-  - test: 测试代码
-  - docs: 文档
-  - unknown: 无法分类
+**这个目录是做什么的？**
+- service: 业务功能模块
+- lib: 工具库或公共代码
+- ui: 界面相关
+- infra: 基础设施（数据库、缓存等）
+- config: 配置文件
+- test: 测试代码
+- docs: 文档
+- unknown: 看不出来
 
-- **capabilities**：列出该目录提供的核心功能（用人话描述）
+**它提供了什么功能？**
+- capabilities: 用大白话说它的主要功能
 
-- **public_interfaces**：识别对外暴露的接口
-  - http: REST API 或 Web 接口
-  - rpc: 远程过程调用
-  - cli: 命令行工具
-  - api: 程序接口
+**别人怎么调用它？**
+- http: Web API的话，列出路由和方法
+- rpc: 远程调用的话，列出service和方法
+- cli: 命令行工具的话，列出命令
+- api: 代码库的话，列出主要function
 
-- **dependencies**：区分依赖类型
-  - internal: 项目内部模块
-  - external: 第三方依赖库
+**它用了什么？**
+- internal: 项目内的其他模块
+- external: 第三方库（比如npm、pip包）
 
-- **risks**：识别潜在的技术风险或问题
-  - 安全风险
-  - 性能问题  
-  - 维护困难
-  - 技术债务
+**有什么坑或者风险？**
+- risks: 可能存在的问题，比如性能、安全、维护难度等
 
-- **evidence**：列出支持结论的具体文件
-
-- **confidence**：分析置信度评估
-  - 90-100: 非常确信，证据充分
-  - 70-89: 相当确信，证据较多
-  - 50-69: 基本确信，证据一般
-  - 30-49: 不太确信，证据较少
-  - 0-29: 很不确信，缺乏证据
+**你的判断有多确定？**
+- 90-100分: 很确定，代码很清楚
+- 70-89分: 比较确定，大致看明白了
+- 50-69分: 一般确定，有些地方不太清楚
+- 30-49分: 不太确定，很多地方看不明白
+- 0-29分: 基本不确定，完全看不懂
 
 请开始分析：
