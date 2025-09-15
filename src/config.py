@@ -53,16 +53,32 @@ class DigginSettings:
     logging: LoggingSettings = field(default_factory=LoggingSettings)
 
     def get_max_file_size_bytes(self) -> int:
-        """Convert max_file_size to bytes."""
-        size_str = self.max_file_size.upper()
+        """Convert max_file_size to bytes - fail fast on invalid input."""
+        size_str = self.max_file_size.upper().strip()
+
+        if not size_str:
+            raise ValueError("max_file_size cannot be empty")
+
         if size_str.endswith("KB"):
-            return int(size_str[:-2]) * 1024
+            try:
+                return int(size_str[:-2]) * 1024
+            except ValueError:
+                raise ValueError(f"Invalid KB size format: '{self.max_file_size}'. Expected format: '10KB'")
         elif size_str.endswith("MB"):
-            return int(size_str[:-2]) * 1024 * 1024
+            try:
+                return int(size_str[:-2]) * 1024 * 1024
+            except ValueError:
+                raise ValueError(f"Invalid MB size format: '{self.max_file_size}'. Expected format: '10MB'")
         elif size_str.endswith("GB"):
-            return int(size_str[:-2]) * 1024 * 1024 * 1024
+            try:
+                return int(size_str[:-2]) * 1024 * 1024 * 1024
+            except ValueError:
+                raise ValueError(f"Invalid GB size format: '{self.max_file_size}'. Expected format: '10GB'")
         else:
-            return int(size_str)
+            try:
+                return int(size_str)
+            except ValueError:
+                raise ValueError(f"Invalid size format: '{self.max_file_size}'. Expected format: '1024' (bytes) or '10KB/MB/GB'")
 
 
 class ConfigManager:

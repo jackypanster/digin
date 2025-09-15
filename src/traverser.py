@@ -233,6 +233,15 @@ class DirectoryTraverser:
 
         return False
 
+    # Public wrappers for cross-module use (avoid private access)
+    def should_ignore_directory(self, directory: Path) -> bool:
+        """Public: whether directory should be ignored (wrapper)."""
+        return self._should_ignore_directory(directory)
+
+    def should_ignore_file(self, file_path: Path) -> bool:
+        """Public: whether file should be ignored (wrapper)."""
+        return self._should_ignore_file(file_path)
+
     def _should_ignore_file(self, file_path: Path) -> bool:
         """Check if file should be ignored.
 
