@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import DigginSettings
+from .logger import get_logger
 
 
 class DirectoryTraverser:
@@ -27,6 +28,7 @@ class DirectoryTraverser:
             settings: Configuration settings
         """
         self.settings = settings
+        self.logger = get_logger("traverser")
 
     def find_leaf_directories(self, root_path: Path) -> List[Path]:
         """Find all leaf directories (directories with no subdirectories).
@@ -47,6 +49,7 @@ class DirectoryTraverser:
                     if child.is_dir() and not self._should_ignore_directory(child):
                         subdirs.append(child)
             except PermissionError:
+                self.logger.warning(f"Permission denied accessing directory: {directory}")
                 return
 
             # If no subdirectories, this is a leaf
@@ -177,6 +180,7 @@ class DirectoryTraverser:
 
             # Skip files that are too large
             if stat.st_size > max_size:
+                self.logger.debug(f"Skipping large file ({stat.st_size} bytes): {file_path}")
                 return None
 
             file_info = {
@@ -198,7 +202,8 @@ class DirectoryTraverser:
                         content = f.read(max_content_read)
                         if content.strip():
                             file_info["content_preview"] = content
-                except (UnicodeDecodeError, PermissionError):
+                except (UnicodeDecodeError, PermissionError) as e:
+                    self.logger.debug(f"Failed to read content preview for {file_path}: {e}")
                     pass
 
             return file_info
