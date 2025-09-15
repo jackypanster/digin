@@ -269,6 +269,7 @@ class ClaudeClient(BaseAIClient):
                 success=success,
                 response_size=len(response),
                 error_msg=error_msg,
+                prompt=prompt,
             )
 
             if success:
@@ -451,6 +452,7 @@ class GeminiClient(BaseAIClient):
                 success=success,
                 response_size=len(response),
                 error_msg=error_msg,
+                prompt=prompt,
             )
 
             if success:

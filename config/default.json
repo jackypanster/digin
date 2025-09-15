@@ -68,6 +68,9 @@
     "max_file_size": "10MB",
     "backup_count": 5,
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    "ai_command_logging": true
+    "ai_command_logging": true,
+    "ai_log_format": "readable",
+    "ai_log_detail_level": "summary",
+    "ai_log_prompt_max_chars": 200
   }
 }

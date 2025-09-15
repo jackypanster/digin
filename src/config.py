@@ -23,6 +23,9 @@ class LoggingSettings:
     backup_count: int = 5
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     ai_command_logging: bool = True
+    ai_log_format: str = "readable"  # "readable" or "json"
+    ai_log_detail_level: str = "summary"  # "summary" or "full"
+    ai_log_prompt_max_chars: int = 200
 
 
 @dataclass
@@ -179,7 +182,10 @@ class ConfigManager:
                 "max_file_size": "10MB",
                 "backup_count": 5,
                 "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                "ai_command_logging": True
+                "ai_command_logging": True,
+                "ai_log_format": "readable",
+                "ai_log_detail_level": "summary",
+                "ai_log_prompt_max_chars": 200
             }
         }
 
