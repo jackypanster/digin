@@ -18,6 +18,7 @@ from .aggregator import SummaryAggregator
 from .ai_client import AIClientError, AIClientFactory
 from .cache import CacheManager
 from .config import DigginSettings
+from .logger import get_logger
 from .traverser import DirectoryTraverser
 
 
@@ -41,6 +42,7 @@ class CodebaseAnalyzer:
         self.ai_client = AIClientFactory.create_client(settings)
         self.cache_manager = CacheManager(settings)
         self.aggregator = SummaryAggregator(settings)
+        self.logger = get_logger("analyzer")
 
         # Analysis statistics
         self.stats = {
@@ -64,6 +66,7 @@ class CodebaseAnalyzer:
             Analysis result for root directory
         """
         self.stats["start_time"] = time.time()
+        self.logger.info(f"Starting analysis of codebase: {root_path}")
 
         if self.settings.verbose:
             print(f"Starting analysis of {root_path}")
@@ -98,8 +101,10 @@ class CodebaseAnalyzer:
 
                 except Exception as e:
                     self.stats["errors"] += 1
+                    error_msg = f"Error analyzing {directory}: {e}"
+                    self.logger.error(error_msg)
                     if self.settings.verbose:
-                        print(f"Error analyzing {directory}: {e}")
+                        print(error_msg)
                     # Continue with other directories
                     continue
 
@@ -111,15 +116,27 @@ class CodebaseAnalyzer:
             return root_digest
 
         except KeyboardInterrupt:
+            interrupt_msg = "Analysis interrupted by user"
+            self.logger.warning(interrupt_msg)
             if self.settings.verbose:
-                print("Analysis interrupted by user")
+                print(interrupt_msg)
             raise
 
         except Exception as e:
-            raise AnalysisError(f"Analysis failed: {e}")
+            error_msg = f"Analysis failed: {e}"
+            self.logger.error(error_msg)
+            raise AnalysisError(error_msg)
 
         finally:
             self.stats["end_time"] = time.time()
+            duration = self.stats["end_time"] - self.stats["start_time"]
+            self.logger.info(
+                f"Analysis completed. Duration: {duration:.2f}s, "
+                f"Directories: {self.stats['directories_analyzed']}, "
+                f"AI calls: {self.stats['ai_calls']}, "
+                f"Cache hits: {self.stats['cache_hits']}, "
+                f"Errors: {self.stats['errors']}"
+            )
 
     def _analyze_directory(
         self,
@@ -130,7 +147,10 @@ class CodebaseAnalyzer:
         """Analyze a single directory."""
         cached = self._check_cache(directory)
         if cached:
+            self.logger.debug(f"Cache hit for directory: {directory}")
             return cached
+
+        self.logger.debug(f"Cache miss for directory: {directory}")
 
         directory_info = self.traverser.collect_directory_info(directory)
         self.stats["total_files"] += directory_info.get("total_files", 0)

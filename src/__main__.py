@@ -31,6 +31,7 @@ from rich.tree import Tree
 from .__version__ import __version__
 from .analyzer import CodebaseAnalyzer
 from .config import ConfigManager, DigginSettings
+from .logger import get_logger, setup_logging
 
 console = Console()
 
@@ -59,6 +60,25 @@ def load_and_configure_settings(
         settings.cache_enabled = False
 
     return settings
+
+
+def initialize_logging(settings: DigginSettings) -> None:
+    """Initialize logging based on settings."""
+    if settings.logging.enabled:
+        setup_logging(
+            log_dir=settings.logging.log_dir,
+            log_level=settings.logging.level,
+            max_file_size=settings.logging.max_file_size,
+            backup_count=settings.logging.backup_count,
+            log_format=settings.logging.format,
+            ai_command_logging=settings.logging.ai_command_logging,
+        )
+        logger = get_logger("main")
+        logger.info(f"Digin v{__version__} starting up")
+        logger.info(f"Logging initialized: level={settings.logging.level}, dir={settings.logging.log_dir}")
+    else:
+        # Even if disabled, we might want basic console logging for errors
+        get_logger("main").info("Logging is disabled")
 
 
 def validate_target_path(path: Path) -> None:
@@ -243,19 +263,28 @@ def main(
 
         settings = load_and_configure_settings(config, provider, verbose, force)
 
+        # Initialize logging system
+        initialize_logging(settings)
+        logger = get_logger("main")
+
         if verbose and not quiet:
             console.print(f"[dim]Analyzing: {path.absolute()}[/dim]")
             console.print(f"[dim]Provider: {settings.api_provider}[/dim]")
             console.print(f"[dim]Cache enabled: {settings.cache_enabled}[/dim]")
 
         validate_target_path(path)
+        logger.info(f"Target path validated: {path.absolute()}")
+
         analyzer = setup_analyzer(settings, path, clear_cache, quiet)
 
         if dry_run:
+            logger.info("Running in dry-run mode")
             show_dry_run_plan(analyzer, path, verbose)
             return
 
+        logger.info("Starting full analysis")
         results = run_analysis_with_progress(analyzer, path, quiet, verbose)
+        logger.info("Analysis completed successfully")
 
         if not quiet and results:
             _display_results(results, output_format, verbose)
@@ -265,11 +294,17 @@ def main(
             console.print("\n✅ [green]Analysis complete![/green]")
 
     except Exception as e:
-        console.print(f"[red]Fatal error: {e}[/red]")
+        error_msg = f"Fatal error: {e}"
+        console.print(f"[red]{error_msg}[/red]")
+        if 'logger' in locals():
+            logger.error(error_msg)
+
         if verbose:
             import traceback
-
-            console.print(f"[red]{traceback.format_exc()}[/red]")
+            traceback_str = traceback.format_exc()
+            console.print(f"[red]{traceback_str}[/red]")
+            if 'logger' in locals():
+                logger.error(f"Full traceback: {traceback_str}")
         sys.exit(1)
 
 
