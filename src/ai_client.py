@@ -11,6 +11,7 @@
 
 import json
 import subprocess
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from .__version__ import __version__
 from .config import DigginSettings
+from .logger import get_logger, log_ai_command
 
 
 class AIClientError(Exception):
@@ -56,6 +58,7 @@ class ClaudeClient(BaseAIClient):
         self.settings = settings
         self.api_options = settings.api_options
         self.prompt_template = self._load_prompt_template()
+        self.logger = get_logger("ai_client")
 
     def analyze_directory(
         self,
@@ -76,7 +79,7 @@ class ClaudeClient(BaseAIClient):
             prompt = self._build_prompt(directory_info, children_digests or [])
 
             # Call Claude CLI
-            response = self._call_claude_cli(prompt)
+            response = self._call_claude_cli(prompt, directory_info.get("path", ""))
 
             # Parse response
             digest = self._parse_response(response)
@@ -190,11 +193,12 @@ class ClaudeClient(BaseAIClient):
 
         return "\n".join(children_summaries)
 
-    def _call_claude_cli(self, prompt: str) -> str:
+    def _call_claude_cli(self, prompt: str, directory: str = "") -> str:
         """Call Claude CLI with prompt.
 
         Args:
             prompt: Analysis prompt
+            directory: Directory being analyzed (for logging)
 
         Returns:
             Claude's response
@@ -219,6 +223,15 @@ class ClaudeClient(BaseAIClient):
                 model = "haiku"
             cmd.extend(["--model", model])
 
+        start_time = time.time()
+        prompt_size = len(prompt)
+        response = ""
+        success = False
+        error_msg = ""
+
+        self.logger.info(f"Starting Claude CLI call for directory: {directory}")
+        self.logger.debug(f"Command: {' '.join(cmd)}")
+
         try:
             # Pass prompt via stdin instead of as argument
             result = subprocess.run(
@@ -230,12 +243,39 @@ class ClaudeClient(BaseAIClient):
             )
 
             if result.returncode != 0:
-                raise AIClientError(f"Claude CLI failed: {result.stderr}")
+                error_msg = result.stderr
+                raise AIClientError(f"Claude CLI failed: {error_msg}")
 
-            return result.stdout.strip()
+            response = result.stdout.strip()
+            success = True
+            return response
 
         except subprocess.TimeoutExpired:
-            raise AIClientError("Claude CLI timed out")
+            error_msg = "Claude CLI timed out"
+            raise AIClientError(error_msg)
+
+        except Exception as e:
+            error_msg = str(e)
+            raise
+
+        finally:
+            # 记录 AI 命令执行详情
+            log_ai_command(
+                provider="claude",
+                command=cmd,
+                prompt_size=prompt_size,
+                directory=directory,
+                start_time=start_time,
+                success=success,
+                response_size=len(response),
+                error_msg=error_msg,
+                prompt=prompt,
+            )
+
+            if success:
+                self.logger.info(f"Claude CLI call completed successfully for: {directory}")
+            else:
+                self.logger.error(f"Claude CLI call failed for: {directory} - {error_msg}")
 
     def _parse_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Parse Claude response as JSON.
@@ -316,6 +356,7 @@ class GeminiClient(BaseAIClient):
         self.prompt_template = ClaudeClient(
             settings
         ).prompt_template  # Reuse same template
+        self.logger = get_logger("ai_client")
 
     def analyze_directory(
         self,
@@ -329,7 +370,7 @@ class GeminiClient(BaseAIClient):
             prompt = claude_client._build_prompt(directory_info, children_digests or [])
 
             # Call Gemini CLI
-            response = self._call_gemini_cli(prompt)
+            response = self._call_gemini_cli(prompt, directory_info.get("path", ""))
 
             # Parse response (reuse Claude's logic)
             digest = claude_client._parse_response(response)
@@ -359,7 +400,7 @@ class GeminiClient(BaseAIClient):
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 
-    def _call_gemini_cli(self, prompt: str) -> str:
+    def _call_gemini_cli(self, prompt: str, directory: str = "") -> str:
         """Call Gemini CLI with prompt."""
         cmd = ["gemini"]
 
@@ -370,18 +411,54 @@ class GeminiClient(BaseAIClient):
         # Add prompt
         cmd.extend(["-p", prompt])
 
+        start_time = time.time()
+        prompt_size = len(prompt)
+        response = ""
+        success = False
+        error_msg = ""
+
+        self.logger.info(f"Starting Gemini CLI call for directory: {directory}")
+        self.logger.debug(f"Command: {' '.join(cmd)}")
+
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=120  # 2 minute timeout
             )
 
             if result.returncode != 0:
-                raise AIClientError(f"Gemini CLI failed: {result.stderr}")
+                error_msg = result.stderr
+                raise AIClientError(f"Gemini CLI failed: {error_msg}")
 
-            return result.stdout.strip()
+            response = result.stdout.strip()
+            success = True
+            return response
 
         except subprocess.TimeoutExpired:
-            raise AIClientError("Gemini CLI timed out")
+            error_msg = "Gemini CLI timed out"
+            raise AIClientError(error_msg)
+
+        except Exception as e:
+            error_msg = str(e)
+            raise
+
+        finally:
+            # 记录 AI 命令执行详情
+            log_ai_command(
+                provider="gemini",
+                command=cmd,
+                prompt_size=prompt_size,
+                directory=directory,
+                start_time=start_time,
+                success=success,
+                response_size=len(response),
+                error_msg=error_msg,
+                prompt=prompt,
+            )
+
+            if success:
+                self.logger.info(f"Gemini CLI call completed successfully for: {directory}")
+            else:
+                self.logger.error(f"Gemini CLI call failed for: {directory} - {error_msg}")
 
 
 class AIClientFactory:

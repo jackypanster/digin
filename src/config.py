@@ -14,6 +14,21 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass
+class LoggingSettings:
+    """Logging configuration settings."""
+    enabled: bool = True
+    level: str = "INFO"
+    log_dir: str = "logs"
+    max_file_size: str = "10MB"
+    backup_count: int = 5
+    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    ai_command_logging: bool = True
+    ai_log_format: str = "readable"  # "readable" or "json"
+    ai_log_detail_level: str = "summary"  # "summary" or "full"
+    ai_log_prompt_max_chars: int = 200
+
+
+@dataclass
 class DigginSettings:
     """Configuration settings for digin."""
 
@@ -33,6 +48,9 @@ class DigginSettings:
     parallel_workers: int = 1
     max_depth: int = 10
     verbose: bool = False
+
+    # Logging settings
+    logging: LoggingSettings = field(default_factory=LoggingSettings)
 
     def get_max_file_size_bytes(self) -> int:
         """Convert max_file_size to bytes."""
@@ -85,6 +103,11 @@ class ConfigManager:
         merged_config = {**default_config, **project_config, **custom_config}
 
         # Convert to DigginSettings dataclass
+        # Handle nested logging configuration
+        if "logging" in merged_config:
+            logging_config = merged_config.pop("logging")
+            merged_config["logging"] = LoggingSettings(**logging_config)
+
         return DigginSettings(**merged_config)
 
     def _load_json_config(self, config_path: Path) -> Dict[str, Any]:
@@ -152,6 +175,18 @@ class ConfigManager:
             "parallel_workers": 1,
             "max_depth": 10,
             "verbose": False,
+            "logging": {
+                "enabled": True,
+                "level": "INFO",
+                "log_dir": "logs",
+                "max_file_size": "10MB",
+                "backup_count": 5,
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                "ai_command_logging": True,
+                "ai_log_format": "readable",
+                "ai_log_detail_level": "summary",
+                "ai_log_prompt_max_chars": 200
+            }
         }
 
         with open(output_path, "w", encoding="utf-8") as f:
