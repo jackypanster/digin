@@ -231,6 +231,31 @@ class DigginLogger:
 
         return prompt[:max_chars] + "..."
 
+    def _redact_sensitive_prompt(self, prompt: str) -> str:
+        """对提示词进行脱敏处理，移除文件内容但保留结构信息。"""
+        if not prompt:
+            return ""
+
+        # 查找代码内容部分并替换
+        import re
+
+        # 匹配代码块的模式
+        code_pattern = r'```[\w]*\n(.*?)\n```'
+        redacted_prompt = re.sub(code_pattern, '```\n[REDACTED_CODE_CONTENT]\n```', prompt, flags=re.DOTALL)
+
+        # 如果提示词仍然很长，保留前100字符 + 结构信息
+        if len(redacted_prompt) > 300:
+            lines = redacted_prompt.split('\n')
+            structure_info = []
+            for line in lines[:10]:  # 只保留前10行的结构信息
+                if '**' in line or '##' in line or '目录路径' in line or '包含的文件' in line:
+                    structure_info.append(line)
+
+            if structure_info:
+                return '\n'.join(structure_info) + '\n[...CONTENT_REDACTED...]'
+
+        return redacted_prompt[:100] + "..." if len(redacted_prompt) > 100 else redacted_prompt
+
     def _format_readable_ai_log(
         self,
         provider: str,
@@ -246,11 +271,20 @@ class DigginLogger:
         """格式化人类可读的 AI 命令日志。"""
         status_icon = "✅ SUCCESS" if success else "❌ FAILED"
         prompt_hash = self._hash_prompt(prompt)
-        prompt_preview = self._truncate_prompt(prompt)
+
+        # 使用脱敏的提示词预览
+        prompt_preview = self._redact_sensitive_prompt(prompt)
 
         duration_str = f"{duration_ms / 1000:.2f} seconds"
         if duration_ms >= 120000:  # 2+ minutes
             duration_str += " (SLOW)"
+
+        # 构建脱敏的命令，替换实际提示词
+        redacted_command = command.copy()
+        for i, arg in enumerate(redacted_command):
+            if arg == '-p' and i + 1 < len(redacted_command):
+                redacted_command[i + 1] = '[REDACTED_PROMPT]'
+                break
 
         log_entry = f"""
 {'=' * 80}
@@ -263,7 +297,7 @@ Duration:   {duration_str}
 Prompt:     [{prompt_size} chars] {prompt_preview}
 Response:   [{response_size} chars]
 Hash:       {prompt_hash}
-Command:    {' '.join(command)}"""
+Command:    {' '.join(redacted_command)}"""
 
         if not success and error_msg:
             log_entry += f"\nError:      {error_msg}"
