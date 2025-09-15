@@ -29,6 +29,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from .__version__ import __version__
+from .ai_client import is_cli_available
 from .analyzer import CodebaseAnalyzer
 from .config import ConfigManager, DigginSettings
 from .logger import get_logger, setup_logging
@@ -207,10 +208,56 @@ def _create_progress_analyzer(
             return super()._analyze_directory(directory, root_path, completed_digests)
 
     progress_analyzer = ProgressAnalyzer(analyzer.settings)
-    progress_analyzer.ai_client = analyzer.ai_client
     progress_analyzer.cache_manager = analyzer.cache_manager
 
     return progress_analyzer
+
+
+def load_and_validate_config(
+    config: Optional[Path], provider: Optional[str], verbose: bool, force: bool
+) -> DigginSettings:
+    """Load configuration and validate settings."""
+    settings = load_and_configure_settings(config, provider, verbose, force)
+    initialize_logging(settings)
+    return settings
+
+
+def validate_environment(path: Path, settings: DigginSettings, verbose: bool, quiet: bool) -> None:
+    """Validate target path and log environment info."""
+    validate_target_path(path)
+    logger = get_logger("main")
+    logger.info(f"Target path validated: {path.absolute()}")
+
+    if verbose and not quiet:
+        console.print(f"[dim]Analyzing: {path.absolute()}[/dim]")
+        console.print(f"[dim]Provider: {settings.api_provider}[/dim]")
+        console.print(f"[dim]Cache enabled: {settings.cache_enabled}[/dim]")
+
+
+def execute_dry_run(analyzer: CodebaseAnalyzer, path: Path, verbose: bool) -> None:
+    """Execute dry run analysis and display plan."""
+    logger = get_logger("main")
+    logger.info("Running in dry-run mode")
+    show_dry_run_plan(analyzer, path, verbose)
+
+
+def execute_analysis(analyzer: CodebaseAnalyzer, path: Path, quiet: bool, verbose: bool) -> Dict[str, Any]:
+    """Execute full analysis with progress tracking."""
+    logger = get_logger("main")
+    logger.info("Starting full analysis")
+    results = run_analysis_with_progress(analyzer, path, quiet, verbose)
+    logger.info("Analysis completed successfully")
+    return results
+
+
+def display_results(results: Dict[str, Any], output_format: str, verbose: bool, analyzer: CodebaseAnalyzer, quiet: bool) -> None:
+    """Display analysis results and statistics."""
+    if not quiet and results:
+        _display_results(results, output_format, verbose)
+
+    if not quiet:
+        _show_statistics(analyzer.get_analysis_stats())
+        console.print("\n✅ [green]Analysis complete![/green]")
 
 
 @click.command()
@@ -258,56 +305,34 @@ def main(
     PATH: Directory to analyze (defaults to current directory)
     """
     try:
-        if quiet:
-            console.quiet = True
-
         if not quiet:
             print_banner()
 
-        settings = load_and_configure_settings(config, provider, verbose, force)
-
-        # Initialize logging system
-        initialize_logging(settings)
-        logger = get_logger("main")
-
-        if verbose and not quiet:
-            console.print(f"[dim]Analyzing: {path.absolute()}[/dim]")
-            console.print(f"[dim]Provider: {settings.api_provider}[/dim]")
-            console.print(f"[dim]Cache enabled: {settings.cache_enabled}[/dim]")
-
-        validate_target_path(path)
-        logger.info(f"Target path validated: {path.absolute()}")
+        settings = load_and_validate_config(config, provider, verbose, force)
+        validate_environment(path, settings, verbose, quiet)
 
         analyzer = setup_analyzer(settings, path, clear_cache, quiet)
 
         if dry_run:
-            logger.info("Running in dry-run mode")
-            show_dry_run_plan(analyzer, path, verbose)
+            execute_dry_run(analyzer, path, verbose)
             return
 
-        logger.info("Starting full analysis")
-        results = run_analysis_with_progress(analyzer, path, quiet, verbose)
-        logger.info("Analysis completed successfully")
-
-        if not quiet and results:
-            _display_results(results, output_format, verbose)
-
-        if not quiet:
-            _show_statistics(analyzer.get_analysis_stats())
-            console.print("\n✅ [green]Analysis complete![/green]")
+        results = execute_analysis(analyzer, path, quiet, verbose)
+        display_results(results, output_format, verbose, analyzer, quiet)
 
     except Exception as e:
         error_msg = f"Fatal error: {e}"
         console.print(f"[red]{error_msg}[/red]")
+
         if 'logger' in locals():
-            logger.error(error_msg)
+            get_logger("main").error(error_msg)
 
         if verbose:
             import traceback
             traceback_str = traceback.format_exc()
             console.print(f"[red]{traceback_str}[/red]")
             if 'logger' in locals():
-                logger.error(f"Full traceback: {traceback_str}")
+                get_logger("main").error(f"Full traceback: {traceback_str}")
         sys.exit(1)
 
 
@@ -322,7 +347,7 @@ def setup_analyzer(
         if not quiet:
             console.print("[yellow]Cache cleared[/yellow]")
 
-    if not analyzer.ai_client.is_available():
+    if not is_cli_available(settings.api_provider):
         console.print(
             f"[red]Error: {settings.api_provider} CLI not found.[/red]\n"
             f"Please install the {settings.api_provider} CLI tool."

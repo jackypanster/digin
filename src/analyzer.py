@@ -15,17 +15,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .aggregator import SummaryAggregator
-from .ai_client import AIClientError, AIClientFactory
+from .ai_client import analyze_directory_with_ai, is_cli_available
 from .cache import CacheManager
 from .config import DigginSettings
 from .logger import get_logger
 from .traverser import DirectoryTraverser
 
 
-class AnalysisError(Exception):
-    """Exception raised during analysis."""
-
-    pass
+# Removed AnalysisError - now using standard exceptions for fail-fast behavior
 
 
 class CodebaseAnalyzer:
@@ -39,7 +36,6 @@ class CodebaseAnalyzer:
         """
         self.settings = settings
         self.traverser = DirectoryTraverser(settings)
-        self.ai_client = AIClientFactory.create_client(settings)
         self.cache_manager = CacheManager(settings)
         self.aggregator = SummaryAggregator(settings)
         self.logger = get_logger("analyzer")
@@ -71,13 +67,13 @@ class CodebaseAnalyzer:
         if self.settings.verbose:
             print(f"Starting analysis of {root_path}")
 
-        try:
-            # Verify AI client availability
-            if not self.ai_client.is_available():
-                raise AnalysisError(
-                    f"AI provider '{self.settings.api_provider}' CLI not available"
-                )
+        # Verify AI client availability
+        if not is_cli_available(self.settings.api_provider):
+            raise RuntimeError(
+                f"AI provider '{self.settings.api_provider}' CLI not available"
+            )
 
+        try:
             # Get analysis order (bottom-up)
             analysis_order = self.traverser.get_analysis_order(root_path)
 
@@ -125,7 +121,7 @@ class CodebaseAnalyzer:
         except Exception as e:
             error_msg = f"Analysis failed: {e}"
             self.logger.error(error_msg)
-            raise AnalysisError(error_msg)
+            raise RuntimeError(error_msg) from e
 
         finally:
             self.stats["end_time"] = time.time()
@@ -188,20 +184,19 @@ class CodebaseAnalyzer:
 
     def _analyze_leaf_directory(
         self, directory_info: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Analyze leaf directory using AI."""
         self.stats["ai_calls"] += 1
 
-        try:
-            digest = self.ai_client.analyze_directory(directory_info)
-            if not digest or not isinstance(digest, dict):
-                return None
+        digest = analyze_directory_with_ai(
+            self.settings.api_provider,
+            directory_info,
+            children_digests=None,
+            settings=self.settings
+        )
 
-            self._ensure_required_fields(digest, directory_info)
-            return digest
-
-        except AIClientError:
-            return None
+        self._ensure_required_fields(digest, directory_info)
+        return digest
 
     def _ensure_required_fields(
         self, digest: Dict[str, Any], directory_info: Dict[str, Any]
@@ -233,7 +228,7 @@ class CodebaseAnalyzer:
             for item in directory.iterdir():
                 if not item.is_dir():
                     continue
-                if self.traverser._should_ignore_directory(item):
+                if self.traverser.should_ignore_directory(item):
                     continue
 
                 child_digest = completed_digests.get(str(item))
