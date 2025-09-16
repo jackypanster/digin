@@ -21,7 +21,6 @@ from .config import DigginSettings
 from .logger import get_logger
 from .traverser import DirectoryTraverser
 
-
 # Removed AnalysisError - now using standard exceptions for fail-fast behavior
 
 
@@ -182,9 +181,7 @@ class CodebaseAnalyzer:
         if digest and self.settings.cache_enabled:
             self.cache_manager.save_digest(directory, digest)
 
-    def _analyze_leaf_directory(
-        self, directory_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _analyze_leaf_directory(self, directory_info: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze leaf directory using AI."""
         self.stats["ai_calls"] += 1
 
@@ -192,7 +189,7 @@ class CodebaseAnalyzer:
             self.settings.api_provider,
             directory_info,
             children_digests=None,
-            settings=self.settings
+            settings=self.settings,
         )
 
         self._ensure_required_fields(digest, directory_info)

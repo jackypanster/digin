@@ -152,7 +152,6 @@ Thumbs.db
 *.hash
 digest.json
 .digin_hash
-.digin.json
 temp/
 tmp/
 
