@@ -61,6 +61,10 @@ test = [
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.10.0",
 ]
+web = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/digin"
@@ -73,11 +77,12 @@ Changelog = "https://github.com/yourusername/digin/blob/main/CHANGELOG.md"
 digin = "src:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src", "web"]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",
+    "/web",
     "/tests",
     "/config",
     "/docs",
