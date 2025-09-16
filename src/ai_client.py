@@ -46,7 +46,11 @@ def load_prompt_template() -> str:
 請只輸出JSON，無其他文字："""
 
 
-def build_prompt(template: str, directory_info: Dict[str, Any], children_digests: List[Dict[str, Any]]) -> str:
+def build_prompt(
+    template: str,
+    directory_info: Dict[str, Any],
+    children_digests: List[Dict[str, Any]],
+) -> str:
     """Build analysis prompt from template."""
     file_list_str = format_file_list(directory_info.get("files", []))
     code_snippets_str = format_code_snippets(directory_info.get("files", []))
@@ -88,15 +92,34 @@ def format_code_snippets(files: List[Dict[str, Any]]) -> str:
 
         # Add language hint for syntax highlighting
         lang_map = {
-            '.py': 'python', '.js': 'javascript', '.ts': 'typescript',
-            '.java': 'java', '.cpp': 'cpp', '.c': 'c', '.rs': 'rust',
-            '.go': 'go', '.rb': 'ruby', '.php': 'php', '.cs': 'csharp',
-            '.vue': 'vue', '.jsx': 'jsx', '.tsx': 'tsx', '.sql': 'sql',
-            '.sh': 'bash', '.yml': 'yaml', '.yaml': 'yaml', '.json': 'json',
-            '.xml': 'xml', '.html': 'html', '.css': 'css', '.scss': 'scss',
-            '.md': 'markdown', '.dockerfile': 'dockerfile', '.tf': 'terraform'
+            ".py": "python",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".java": "java",
+            ".cpp": "cpp",
+            ".c": "c",
+            ".rs": "rust",
+            ".go": "go",
+            ".rb": "ruby",
+            ".php": "php",
+            ".cs": "csharp",
+            ".vue": "vue",
+            ".jsx": "jsx",
+            ".tsx": "tsx",
+            ".sql": "sql",
+            ".sh": "bash",
+            ".yml": "yaml",
+            ".yaml": "yaml",
+            ".json": "json",
+            ".xml": "xml",
+            ".html": "html",
+            ".css": "css",
+            ".scss": "scss",
+            ".md": "markdown",
+            ".dockerfile": "dockerfile",
+            ".tf": "terraform",
         }
-        lang = lang_map.get(file_ext.lower(), '')
+        lang = lang_map.get(file_ext.lower(), "")
 
         code_snippets.append(
             f"**{file_info['name']}** ({file_info.get('size', 0)} bytes):\n```{lang}\n{content}\n```"
@@ -152,7 +175,9 @@ def parse_json_response(response: str) -> Dict[str, Any]:
         raise ValueError(f"Failed to parse AI response as JSON: {response[:500]}...")
 
 
-def call_claude_cli(prompt: str, api_options: Dict[str, Any], directory: str = "") -> str:
+def call_claude_cli(
+    prompt: str, api_options: Dict[str, Any], directory: str = ""
+) -> str:
     """Call Claude CLI with prompt."""
     cmd = ["claude", "--print"]
 
@@ -236,7 +261,9 @@ def call_claude_cli(prompt: str, api_options: Dict[str, Any], directory: str = "
         raise
 
 
-def call_gemini_cli(prompt: str, api_options: Dict[str, Any], directory: str = "") -> str:
+def call_gemini_cli(
+    prompt: str, api_options: Dict[str, Any], directory: str = ""
+) -> str:
     """Call Gemini CLI with prompt."""
     cmd = ["gemini"]
 
@@ -320,11 +347,12 @@ def analyze_directory_with_ai(
     provider: str,
     directory_info: Dict[str, Any],
     children_digests: Optional[List[Dict[str, Any]]] = None,
-    settings: Optional[DigginSettings] = None
+    settings: Optional[DigginSettings] = None,
 ) -> Dict[str, Any]:
     """Analyze directory using specified AI provider."""
     if not settings:
         from .config import DigginSettings
+
         settings = DigginSettings()
 
     # Load prompt template
@@ -335,9 +363,13 @@ def analyze_directory_with_ai(
 
     # Call appropriate AI CLI
     if provider.lower() == "claude":
-        response = call_claude_cli(prompt, settings.api_options, directory_info.get("path", ""))
+        response = call_claude_cli(
+            prompt, settings.api_options, directory_info.get("path", "")
+        )
     elif provider.lower() == "gemini":
-        response = call_gemini_cli(prompt, settings.api_options, directory_info.get("path", ""))
+        response = call_gemini_cli(
+            prompt, settings.api_options, directory_info.get("path", "")
+        )
     else:
         raise ValueError(f"Unsupported AI provider: {provider}")
 
@@ -345,9 +377,11 @@ def analyze_directory_with_ai(
     digest = parse_json_response(response)
 
     # Add metadata
-    digest.update({
-        "analyzed_at": datetime.now().isoformat(),
-        "analyzer_version": __version__,
-    })
+    digest.update(
+        {
+            "analyzed_at": datetime.now().isoformat(),
+            "analyzer_version": __version__,
+        }
+    )
 
     return digest

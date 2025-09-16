@@ -57,16 +57,41 @@ def setup_logging(
     formatter = logging.Formatter(log_format)
 
     # Setup main application logger
-    setup_file_logger("digin", log_path / "digin.log", numeric_level, formatter, max_bytes, backup_count)
+    setup_file_logger(
+        "digin",
+        log_path / "digin.log",
+        numeric_level,
+        formatter,
+        max_bytes,
+        backup_count,
+    )
 
     # Setup AI command logger if enabled
     if ai_command_logging:
-        ai_formatter = logging.Formatter("%(asctime)s - AI_COMMAND - %(levelname)s - %(message)s")
-        setup_file_logger("digin.ai_commands", log_path / "ai_commands.log", numeric_level, ai_formatter, max_bytes, backup_count)
+        ai_formatter = logging.Formatter(
+            "%(asctime)s - AI_COMMAND - %(levelname)s - %(message)s"
+        )
+        setup_file_logger(
+            "digin.ai_commands",
+            log_path / "ai_commands.log",
+            numeric_level,
+            ai_formatter,
+            max_bytes,
+            backup_count,
+        )
 
     # Setup error logger
-    error_formatter = logging.Formatter("%(asctime)s - %(name)s - ERROR - %(message)s - [%(pathname)s:%(lineno)d]")
-    setup_file_logger("digin.errors", log_path / "errors.log", logging.WARNING, error_formatter, max_bytes, backup_count)
+    error_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - ERROR - %(message)s - [%(pathname)s:%(lineno)d]"
+    )
+    setup_file_logger(
+        "digin.errors",
+        log_path / "errors.log",
+        logging.WARNING,
+        error_formatter,
+        max_bytes,
+        backup_count,
+    )
 
     _logging_configured = True
 
@@ -139,7 +164,11 @@ def log_ai_command(
     if _ai_log_format == "readable":
         # Human-readable format
         status = "SUCCESS" if success else "FAILED"
-        truncated_prompt = prompt[:_ai_log_prompt_max_chars] + "..." if len(prompt) > _ai_log_prompt_max_chars else prompt
+        truncated_prompt = (
+            prompt[:_ai_log_prompt_max_chars] + "..."
+            if len(prompt) > _ai_log_prompt_max_chars
+            else prompt
+        )
 
         log_msg = f"{provider.upper()} {status} | Dir: {directory} | Duration: {duration:.2f}s | Prompt: {prompt_size} chars | Response: {response_size} chars"
 
@@ -147,7 +176,9 @@ def log_ai_command(
             log_msg += f" | Error: {error_msg}"
 
         if _ai_log_detail_level == "full":
-            log_msg += f" | Command: {' '.join(command)} | Prompt preview: {truncated_prompt}"
+            log_msg += (
+                f" | Command: {' '.join(command)} | Prompt preview: {truncated_prompt}"
+            )
 
         logger.info(log_msg)
     else:

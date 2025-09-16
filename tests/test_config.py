@@ -71,39 +71,6 @@ class TestConfigManager:
         assert settings.cache_enabled is True
         assert "node_modules" in settings.ignore_dirs
 
-    def test_load_project_config_override(self, tmp_path):
-        """Test project config overriding default."""
-        # Create default config
-        config_dir = tmp_path / "config"
-        config_dir.mkdir()
-        default_config = config_dir / "default.json"
-
-        with open(default_config, "w") as f:
-            json.dump({"api_provider": "claude", "verbose": False}, f)
-
-        # Create project config
-        project_config = tmp_path / ".digin.json"
-        with open(project_config, "w") as f:
-            json.dump({"api_provider": "gemini", "cache_enabled": False}, f)
-
-        # Change to temp directory
-        import os
-
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-
-        try:
-            manager = ConfigManager()
-            manager.default_config_path = default_config
-
-            settings = manager.load_config()
-
-            # Project config should override default
-            assert settings.api_provider == "gemini"
-            assert settings.cache_enabled is False
-            assert settings.verbose is False  # From default
-        finally:
-            os.chdir(old_cwd)
 
     def test_load_custom_config(self, tmp_path):
         """Test loading custom config file."""
@@ -136,35 +103,6 @@ class TestConfigManager:
         with pytest.raises(RuntimeError, match="Failed to load default configuration"):
             manager.load_config()
 
-    def test_invalid_json_config(self, tmp_path):
-        """Test handling of invalid JSON in optional configs."""
-        # Create valid default config
-        config_dir = tmp_path / "config"
-        config_dir.mkdir()
-        default_config = config_dir / "default.json"
-
-        with open(default_config, "w") as f:
-            json.dump({"api_provider": "claude"}, f)
-
-        # Create invalid project config
-        project_config = tmp_path / ".digin.json"
-        with open(project_config, "w") as f:
-            f.write("invalid json {")
-
-        import os
-
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-
-        try:
-            manager = ConfigManager()
-            manager.default_config_path = default_config
-
-            # Should not raise error, just ignore invalid project config
-            settings = manager.load_config()
-            assert settings.api_provider == "claude"
-        finally:
-            os.chdir(old_cwd)
 
     def test_save_config_template(self, tmp_path):
         """Test saving configuration template."""

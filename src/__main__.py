@@ -2,7 +2,7 @@
 Digin 命令行入口。
 
 職責與業務邏輯：
-- 讀取與合併配置（default.json → 根目錄 .digin.json → CLI 覆蓋）。
+- 讀取與合併配置（default.json → CLI 覆蓋）。
 - 驗證目標路徑與 AI CLI 可用性（Claude/Gemini）。
 - 支持 dry-run 預覽：顯示葉/父目錄數、分析順序與粗略文件量估算。
 - 非 dry-run：用進度條執行“自底向上”分析，最後按 summary/tree/json 輸出並展示統計。
@@ -79,7 +79,9 @@ def initialize_logging(settings: DigginSettings) -> None:
         )
         logger = get_logger("main")
         logger.info(f"Digin v{__version__} starting up")
-        logger.info(f"Logging initialized: level={settings.logging.level}, dir={settings.logging.log_dir}")
+        logger.info(
+            f"Logging initialized: level={settings.logging.level}, dir={settings.logging.log_dir}"
+        )
     else:
         # Even if disabled, we might want basic console logging for errors
         get_logger("main").info("Logging is disabled")
@@ -222,7 +224,9 @@ def load_and_validate_config(
     return settings
 
 
-def validate_environment(path: Path, settings: DigginSettings, verbose: bool, quiet: bool) -> None:
+def validate_environment(
+    path: Path, settings: DigginSettings, verbose: bool, quiet: bool
+) -> None:
     """Validate target path and log environment info."""
     validate_target_path(path)
     logger = get_logger("main")
@@ -241,7 +245,9 @@ def execute_dry_run(analyzer: CodebaseAnalyzer, path: Path, verbose: bool) -> No
     show_dry_run_plan(analyzer, path, verbose)
 
 
-def execute_analysis(analyzer: CodebaseAnalyzer, path: Path, quiet: bool, verbose: bool) -> Dict[str, Any]:
+def execute_analysis(
+    analyzer: CodebaseAnalyzer, path: Path, quiet: bool, verbose: bool
+) -> Dict[str, Any]:
     """Execute full analysis with progress tracking."""
     logger = get_logger("main")
     logger.info("Starting full analysis")
@@ -250,7 +256,13 @@ def execute_analysis(analyzer: CodebaseAnalyzer, path: Path, quiet: bool, verbos
     return results
 
 
-def display_results(results: Dict[str, Any], output_format: str, verbose: bool, analyzer: CodebaseAnalyzer, quiet: bool) -> None:
+def display_results(
+    results: Dict[str, Any],
+    output_format: str,
+    verbose: bool,
+    analyzer: CodebaseAnalyzer,
+    quiet: bool,
+) -> None:
     """Display analysis results and statistics."""
     if not quiet and results:
         _display_results(results, output_format, verbose)
@@ -324,14 +336,15 @@ def main(
         error_msg = f"Fatal error: {e}"
         console.print(f"[red]{error_msg}[/red]")
 
-        if 'logger' in locals():
+        if "logger" in locals():
             get_logger("main").error(error_msg)
 
         if verbose:
             import traceback
+
             traceback_str = traceback.format_exc()
             console.print(f"[red]{traceback_str}[/red]")
-            if 'logger' in locals():
+            if "logger" in locals():
                 get_logger("main").error(f"Full traceback: {traceback_str}")
         sys.exit(1)
 
