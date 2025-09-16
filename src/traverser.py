@@ -49,7 +49,9 @@ class DirectoryTraverser:
                     if child.is_dir() and not self._should_ignore_directory(child):
                         subdirs.append(child)
             except PermissionError:
-                self.logger.warning(f"Permission denied accessing directory: {directory}")
+                self.logger.warning(
+                    f"Permission denied accessing directory: {directory}"
+                )
                 return
 
             # If no subdirectories, this is a leaf
@@ -180,7 +182,9 @@ class DirectoryTraverser:
 
             # Skip files that are too large
             if stat.st_size > max_size:
-                self.logger.debug(f"Skipping large file ({stat.st_size} bytes): {file_path}")
+                self.logger.debug(
+                    f"Skipping large file ({stat.st_size} bytes): {file_path}"
+                )
                 return None
 
             file_info = {
@@ -203,7 +207,9 @@ class DirectoryTraverser:
                         if content.strip():
                             file_info["content_preview"] = content
                 except (UnicodeDecodeError, PermissionError) as e:
-                    self.logger.debug(f"Failed to read content preview for {file_path}: {e}")
+                    self.logger.debug(
+                        f"Failed to read content preview for {file_path}: {e}"
+                    )
                     pass
 
             return file_info

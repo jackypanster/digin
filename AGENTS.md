@@ -3,7 +3,7 @@
 ## Project Structure
 - `src/` — core package + CLI (`python -m src` or `digin`). Key modules: `analyzer.py`, `traverser.py`, `ai_client.py`, `cache.py`, `aggregator.py`, `config.py`, `__main__.py`.
 - `tests/` — pytest suite (`test_*.py` / `*_test.py`; classes `Test*`; functions `test_*`).
-- `config/` — defaults (`default.json`), AI prompt (`prompt.txt`); user overrides `.digin.json`.
+- `config/` — defaults (`default.json`), AI prompt (`prompt.txt`).
 - `docs/`, `scripts/`; root: `pyproject.toml`, `README.md`, `LICENSE`.
 
 ## Build, Test, Dev
@@ -41,4 +41,4 @@
 
 ## Security & Config
 - Never commit API keys; configure providers via env/OS keychain.
-- Use `.digin.json` for local overrides; respect `ignore_dirs`, `ignore_files`, `ignore_hidden=true`.
+- Use CLI options for temporary overrides; respect `ignore_dirs`, `ignore_files`, `ignore_hidden=true`.

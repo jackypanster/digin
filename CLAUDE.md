@@ -132,16 +132,15 @@ The application follows a modular architecture with clear separation of concerns
 
 **SummaryAggregator** (`src/aggregator.py`): Handles aggregation of child directory summaries for parent directories.
 
-**ConfigManager** (`src/config.py`): Manages configuration loading from multiple sources (default.json, .digin.json, CLI options).
+**ConfigManager** (`src/config.py`): Manages configuration loading from multiple sources (default.json, CLI options).
 
 **DiginWebServer** (`web/server.py`): FastAPI-based web server that provides REST API and static file serving for visualization. Implements security measures to prevent path traversal attacks and only allows access to digest.json files.
 
 ### Analysis Flow
 
-1. **Configuration Loading**: Three-tier precedence system
+1. **Configuration Loading**: Two-tier precedence system
    - Base: `config/default.json` (built-in defaults)
-   - Override: `.digin.json` in project root (project-specific)
-   - Final: CLI options (highest priority, overrides all)
+   - Override: CLI options (highest priority, overrides defaults)
 2. **Directory Traversal**: Scans repository, identifies leaf directories first
 3. **Bottom-up Analysis**: 
    - Leaf directories: AI analysis of files via `src/ai_client.py`
@@ -159,7 +158,7 @@ The application follows a modular architecture with clear separation of concerns
 
 ## Configuration
 
-Default configuration is in `config/default.json`. Users can override with `.digin.json` in project root or via CLI options. Key settings:
+Default configuration is in `config/default.json`. Users can override via CLI options. Key settings:
 
 - `ignore_dirs`: Directories to skip (node_modules, .git, etc.)
 - `ignore_files`: File patterns to ignore (*.pyc, *.log, etc.) 
@@ -270,7 +269,7 @@ class FileCounter:
 - `src/traverser.py`: Directory scanning with configurable filtering
 - `src/cache.py`: File content hash-based caching to avoid redundant AI calls
 - `src/aggregator.py`: Parent directory summary aggregation logic
-- `src/config.py`: Three-tier configuration system (default.json → .digin.json → CLI)
+- `src/config.py`: Two-tier configuration system (default.json → CLI)
 - `config/prompt.txt`: Chinese prompt template for AI analysis
 - `config/default.json`: Base configuration with ignore patterns and settings
 

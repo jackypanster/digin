@@ -25,7 +25,7 @@
 - 看點：`main()` 的參數處理、`_show_dry_run()`、`_display_results_*()`。
 
 2) `src/config.py` + `config/default.json`
-- 配置優先級：默認 → `.digin.json` → CLI 指定文件。
+- 配置優先級：默認 → CLI 指定文件。
 - 關注鍵：`ignore_dirs`/`ignore_files`/`include_extensions`、`api_provider`、`cache_enabled`。
 
 3) `src/traverser.py`

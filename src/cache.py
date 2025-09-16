@@ -143,7 +143,9 @@ class CacheManager:
                 if child.is_dir():
                     child_hash_file = child / ".digin_hash"
                     if child_hash_file.exists():
-                        hasher.update(str(child_hash_file.relative_to(directory)).encode("utf-8"))
+                        hasher.update(
+                            str(child_hash_file.relative_to(directory)).encode("utf-8")
+                        )
                         hasher.update(child_hash_file.read_bytes())
         except PermissionError:
             pass

@@ -1,6 +1,6 @@
 """配置管理與合併。
 
-來源順序：`config/default.json` → 根目錄 `.digin.json` → CLI 指定文件（後者覆蓋前者）。
+來源順序：`config/default.json` → CLI 指定文件（後者覆蓋前者）。
 DigginSettings 包含忽略規則、AI 供應商與選項、併發、深度、是否緩存、最大文件大小等。
 提供 `get_max_file_size_bytes()`（人類可讀大小轉換）與 `save_config_template()`（輸出模板）。
 
@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class LoggingSettings:
     """Logging configuration settings."""
+
     enabled: bool = True
     level: str = "INFO"
     log_dir: str = "logs"
@@ -63,22 +64,30 @@ class DigginSettings:
             try:
                 return int(size_str[:-2]) * 1024
             except ValueError:
-                raise ValueError(f"Invalid KB size format: '{self.max_file_size}'. Expected format: '10KB'")
+                raise ValueError(
+                    f"Invalid KB size format: '{self.max_file_size}'. Expected format: '10KB'"
+                )
         elif size_str.endswith("MB"):
             try:
                 return int(size_str[:-2]) * 1024 * 1024
             except ValueError:
-                raise ValueError(f"Invalid MB size format: '{self.max_file_size}'. Expected format: '10MB'")
+                raise ValueError(
+                    f"Invalid MB size format: '{self.max_file_size}'. Expected format: '10MB'"
+                )
         elif size_str.endswith("GB"):
             try:
                 return int(size_str[:-2]) * 1024 * 1024 * 1024
             except ValueError:
-                raise ValueError(f"Invalid GB size format: '{self.max_file_size}'. Expected format: '10GB'")
+                raise ValueError(
+                    f"Invalid GB size format: '{self.max_file_size}'. Expected format: '10GB'"
+                )
         else:
             try:
                 return int(size_str)
             except ValueError:
-                raise ValueError(f"Invalid size format: '{self.max_file_size}'. Expected format: '1024' (bytes) or '10KB/MB/GB'")
+                raise ValueError(
+                    f"Invalid size format: '{self.max_file_size}'. Expected format: '1024' (bytes) or '10KB/MB/GB'"
+                )
 
 
 class ConfigManager:
@@ -104,19 +113,13 @@ class ConfigManager:
         # Load default configuration
         default_config = self._load_json_config(self.default_config_path)
 
-        # Load project-specific configuration if exists
-        project_config = {}
-        project_config_path = Path.cwd() / ".digin.json"
-        if project_config_path.exists():
-            project_config = self._load_json_config(project_config_path)
-
         # Load custom configuration if specified
         custom_config = {}
         if self.config_file and self.config_file.exists():
             custom_config = self._load_json_config(self.config_file)
 
-        # Merge configurations (custom overrides project overrides default)
-        merged_config = {**default_config, **project_config, **custom_config}
+        # Merge configurations (custom overrides default)
+        merged_config = {**default_config, **custom_config}
 
         # Convert to DigginSettings dataclass
         # Handle nested logging configuration
@@ -201,8 +204,8 @@ class ConfigManager:
                 "ai_command_logging": True,
                 "ai_log_format": "readable",
                 "ai_log_detail_level": "summary",
-                "ai_log_prompt_max_chars": 200
-            }
+                "ai_log_prompt_max_chars": 200,
+            },
         }
 
         with open(output_path, "w", encoding="utf-8") as f:

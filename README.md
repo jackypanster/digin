@@ -124,21 +124,17 @@ project/
 
 ## 配置
 
-创建 `.digin.json` 自定义配置：
+默认配置在 `config/default.json` 中定义。可通过 CLI 参数临时调整设置：
 
-```json
-{
-  "ignore_dirs": ["node_modules", ".git", "dist", "build", "__pycache__"],
-  "ignore_files": ["*.pyc", "*.log", ".DS_Store"],
-  "include_extensions": [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go"],
-  "api_provider": "claude",
-  "api_options": {
-    "model": "claude-3-sonnet",
-    "max_tokens": 4000
-  },
-  "cache_enabled": true,
-  "max_file_size": "1MB"
-}
+```bash
+# 使用 Claude 提供商
+digin . --provider claude
+
+# 强制重新分析（忽略缓存）
+digin . --force
+
+# 详细输出
+digin . --verbose
 ```
 
 ## 系统要求

@@ -100,32 +100,18 @@ digin /path/to/project --config custom.json
 
 ### 2.4 配置管理
 
-#### 2.4.1 配置文件（.digin.json）
-```json
-{
-  "ignore_dirs": [
-    "node_modules", ".git", "dist", "build", "__pycache__",
-    ".pytest_cache", "venv", ".venv", "env", ".env"
-  ],
-  "ignore_files": [
-    "*.pyc", "*.log", ".DS_Store", "*.tmp", "*.swp",
-    "package-lock.json", "yarn.lock", "Pipfile.lock"
-  ],
-  "include_extensions": [
-    ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go",
-    ".rs", ".cpp", ".c", ".h", ".rb", ".php", ".cs"
-  ],
-  "max_file_size": "1MB",
-  "api_provider": "claude",
-  "api_options": {
-    "model": "claude-3-sonnet",
-    "max_tokens": 4000,
-    "append_system_prompt": "只输出JSON；字段严格按Schema；"
-  },
-  "cache_enabled": true,
-  "parallel_workers": 1,
-  "max_depth": 10
-}
+#### 2.4.1 配置系统
+默认配置定义在 `config/default.json` 中，包含所有默认设置。用户可通过 CLI 参数覆盖特定配置：
+
+```bash
+# 使用不同的 AI 提供商
+digin . --provider claude
+
+# 强制重新分析
+digin . --force
+
+# 详细输出
+digin . --verbose
 ```
 
 ## 3. 技术方案
