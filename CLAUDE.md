@@ -6,11 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Digin is an AI-powered codebase archaeology tool that analyzes code repositories using a bottom-up approach. It leverages AI CLI tools (Claude/Gemini) to understand code structure and generates structured JSON summaries for each directory in a project.
 
+**Key Design Philosophy**: "Less is More" - Simple, readable Python code that fails fast. The tool follows a strict "no mocking for AI functionality" testing approach to ensure real-world reliability.
+
 ## Development Commands
 
 ### Environment Setup
 ```bash
-# Install dependencies using uv
+# Install dependencies using uv (recommended package manager)
 uv sync
 
 # Install development dependencies
@@ -18,6 +20,10 @@ uv sync --dev
 
 # Install package in development mode
 uv pip install -e .
+
+# Verify AI CLI tools are installed (REQUIRED for real tests)
+claude --version
+gemini --version
 ```
 
 ### Running the Application
@@ -89,15 +95,18 @@ uv run isort src tests
 # Lint code
 uv run flake8 src tests
 
-# Type checking
+# Type checking (strict mode enabled)
 uv run mypy src
 
-# Run all quality checks
+# Run all quality checks (recommended before commits)
 uv run black src tests && uv run isort src tests && uv run flake8 src tests && uv run mypy src
 
 # Pre-commit hooks (automatically run on commit)
 uv run pre-commit install
 uv run pre-commit run --all-files
+
+# Quick quality check for single file
+uv run black src/analyzer.py && uv run mypy src/analyzer.py
 ```
 
 ## Architecture Overview
@@ -235,11 +244,47 @@ class FileCounter:
 
 ## Development Notes
 
-- Uses `uv` as the package manager and task runner
+### Technical Details
+- Uses `uv` as the package manager and task runner (fast, modern Python packaging)
 - Python 3.8+ required (minimum 3.8.1 for mypy compatibility)
 - Uses dataclasses for configuration and type hints throughout
 - Rich library provides CLI formatting and progress indication
 - AI CLI tools must be installed separately (claude/gemini)
-- Prompt template in `config/prompt.txt` defines AI analysis instructions
+- Prompt template in `config/prompt.txt` defines AI analysis instructions (Chinese)
 - Pre-commit hooks enforce code quality (black, isort, flake8, mypy)
 - Project entry point: `src:main` (can be run as `digin` command after installation)
+
+### Important Files
+- `src/__main__.py`: CLI entry point with rich progress bars and error handling
+- `src/analyzer.py`: Main orchestrator for bottom-up analysis flow
+- `src/ai_client.py`: AI provider abstraction (Claude/Gemini CLI calls)
+- `src/traverser.py`: Directory scanning with configurable filtering
+- `src/cache.py`: File content hash-based caching to avoid redundant AI calls
+- `src/aggregator.py`: Parent directory summary aggregation logic
+- `src/config.py`: Three-tier configuration system (default.json → .digin.json → CLI)
+- `config/prompt.txt`: Chinese prompt template for AI analysis
+- `config/default.json`: Base configuration with ignore patterns and settings
+
+### Logging System
+- Comprehensive logging with configurable levels and AI command logging
+- Structured logging for debugging AI interactions
+- Sensitive data protection (no secrets/PII in logs)
+- Log files stored in `logs/` directory with rotation
+
+### Common Development Workflow
+```bash
+# 1. Make changes to source code
+# 2. Run quality checks
+uv run black src tests && uv run isort src tests && uv run flake8 src tests && uv run mypy src
+
+# 3. Run tests (unit tests first, then real AI if needed)
+uv run pytest -m "unit and not real_ai"  # Fast unit tests
+uv run pytest -m real_ai                  # Real AI tests (slower)
+
+# 4. Test with real codebase
+python -m src . --dry-run                 # Preview what would be analyzed
+python -m src . --provider claude --verbose  # Full analysis with verbose output
+
+# 5. Commit changes (pre-commit hooks will run automatically)
+git add . && git commit -m "feat: your change description"
+```
