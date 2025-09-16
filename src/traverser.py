@@ -63,9 +63,9 @@ class DirectoryTraverser:
             for subdir in subdirs:
                 _scan_directory(subdir)
 
-        # Start scanning from root, but check if root itself should be processed
-        if not self._should_ignore_directory(root_path):
-            _scan_directory(root_path)
+        # Start scanning from root directory
+        # Root directory should always be scanned regardless of its name
+        _scan_directory(root_path)
 
         return sorted(leaf_dirs)
 
