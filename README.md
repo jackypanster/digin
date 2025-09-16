@@ -13,6 +13,7 @@ Digin 是一个利用 AI 能力自动分析代码库结构和功能的工具。�
 - 📊 **结构化输出** - 统一的 JSON 格式（digest.json）
 - 💾 **智能缓存** - 避免重复分析，节省 API 成本
 - 🚀 **简单易用** - 一行命令完成分析
+- 🌐 **Web 可视化** - 现代化的图形界面展示分析结果
 
 ## 快速开始
 
@@ -26,6 +27,9 @@ uv pip install digin
 git clone https://github.com/yourusername/digin.git
 cd digin
 uv pip install -e .
+
+# 安装 Web 界面依赖（可选）
+uv sync --extra web
 ```
 
 ### 基本使用
@@ -43,6 +47,27 @@ digin /path/to/project --provider claude
 # 强制刷新（忽略缓存）
 digin /path/to/project --force
 ```
+
+### Web 可视化界面
+
+除了命令行输出，Digin 还提供了现代化的 Web 界面来展示分析结果：
+
+```bash
+# 1. 先分析项目
+uv run python -m src /path/to/project
+
+# 2. 启动 Web 界面
+uv run python -m web /path/to/project
+
+# 3. 打开浏览器访问
+open http://localhost:8000
+```
+
+Web 界面特性：
+- 📊 **现代卡片式设计** - 美观直观的信息展示
+- 🔍 **交互式浏览** - 点击探索项目结构
+- 📱 **响应式布局** - 支持桌面和移动设备
+- 🎨 **可视化展示** - 项目摘要、功能、依赖关系一览无余
 
 ### 输出示例
 
@@ -127,9 +152,9 @@ project/
 ```
 digin/
 ├── README.md
-├── PRD.md
+├── CLAUDE.md           # 开发指南
 ├── pyproject.toml
-├── src/                 # 源代码
+├── src/                # 核心分析器
 │   ├── __init__.py
 │   ├── __main__.py     # CLI 入口
 │   ├── analyzer.py     # 核心分析逻辑
@@ -137,13 +162,20 @@ digin/
 │   ├── ai_client.py    # AI API 封装
 │   ├── cache.py        # 缓存管理
 │   └── aggregator.py   # 摘要聚合
+├── web/                # Web 可视化模块
+│   ├── __init__.py
+│   ├── __main__.py     # Web 服务器入口
+│   ├── server.py       # FastAPI 服务器
+│   └── static/         # 前端资源
+│       ├── index.html  # 主页面
+│       ├── style.css   # 样式文件
+│       └── app.js      # 交互逻辑
 ├── config/
 │   ├── default.json    # 默认配置
 │   └── prompt.txt      # 提示词模板
 ├── tests/              # 测试代码
 ├── docs/               # 文档
-├── scripts/            # 脚本
-└── examples/           # 示例
+└── scripts/            # 脚本工具
 ```
 
 ## 开发
@@ -153,8 +185,11 @@ digin/
 git clone https://github.com/yourusername/digin.git
 cd digin
 
-# 安装依赖
+# 安装核心依赖
 uv sync
+
+# 安装 Web 依赖（如果需要开发 Web 界面）
+uv sync --extra web
 
 # 运行测试
 uv run pytest
@@ -162,8 +197,11 @@ uv run pytest
 # 开发模式安装
 uv pip install -e .
 
-# 运行
-python -m src.digin /path/to/analyze
+# 运行分析器
+python -m src /path/to/analyze
+
+# 启动 Web 界面（可选）
+python -m web /path/to/analyze
 ```
 
 ## 使用场景
@@ -183,10 +221,12 @@ python -m src.digin /path/to/analyze
 ## 路线图
 
 - [x] MVP - 基础分析功能
-- [ ] Web 界面 - 可视化展示
+- [x] Web 界面 - 现代化可视化展示
+- [ ] 目录树导航 - 交互式项目结构浏览
 - [ ] 增量更新 - 只分析变更部分
 - [ ] 多语言支持 - 更好的代码理解
 - [ ] 团队协作 - 共享分析结果
+- [ ] 主题切换 - 暗色/亮色模式
 
 ## 贡献
 

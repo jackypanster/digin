@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digin 项目分析器</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- 头部 -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">
+                🔍 <span class="title-text">Digin</span>
+                <span class="title-subtitle">项目分析器</span>
+            </h1>
+            <div class="header-info">
+                <span id="project-name" class="project-name">加载中...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="main-container">
+        <!-- 左侧目录树 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>📁 项目结构</h2>
+                <button id="refresh-btn" class="refresh-btn" title="刷新数据">
+                    🔄
+                </button>
+            </div>
+            <div class="tree-container">
+                <div id="directory-tree" class="directory-tree">
+                    <!-- 目录树将通过 JavaScript 动态生成 -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- 右侧详情面板 -->
+        <section class="content-panel">
+            <div id="loading-state" class="loading-state">
+                <div class="loading-spinner"></div>
+                <p>正在加载项目信息...</p>
+            </div>
+
+            <div id="error-state" class="error-state" style="display: none;">
+                <div class="error-icon">❌</div>
+                <h3>加载失败</h3>
+                <p id="error-message">未知错误</p>
+                <button onclick="window.location.reload()" class="retry-btn">重试</button>
+            </div>
+
+            <div id="content-area" class="content-area" style="display: none;">
+                <!-- 摘要卡片 -->
+                <div class="card summary-card">
+                    <div class="card-header">
+                        <h3>📝 项目摘要</h3>
+                        <span id="confidence-badge" class="confidence-badge">置信度: --</span>
+                    </div>
+                    <div class="card-content">
+                        <div class="summary-info">
+                            <div class="info-row">
+                                <span class="info-label">类型：</span>
+                                <span id="project-kind" class="info-value kind-badge">--</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">路径：</span>
+                                <span id="project-path" class="info-value">--</span>
+                            </div>
+                        </div>
+                        <div class="summary-text">
+                            <p id="project-summary">正在加载摘要...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 功能能力卡片 -->
+                <div class="card capabilities-card">
+                    <div class="card-header">
+                        <h3>🎯 主要功能</h3>
+                    </div>
+                    <div class="card-content">
+                        <ul id="capabilities-list" class="capabilities-list">
+                            <!-- 功能列表将动态生成 -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 接口信息卡片 -->
+                <div class="card interfaces-card" id="interfaces-card" style="display: none;">
+                    <div class="card-header">
+                        <h3>🔌 对外接口</h3>
+                    </div>
+                    <div class="card-content">
+                        <div id="interfaces-content">
+                            <!-- 接口信息将动态生成 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 依赖关系卡片 -->
+                <div class="card dependencies-card" id="dependencies-card" style="display: none;">
+                    <div class="card-header">
+                        <h3>📦 依赖关系</h3>
+                    </div>
+                    <div class="card-content">
+                        <div id="dependencies-content">
+                            <!-- 依赖信息将动态生成 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 风险提示卡片 -->
+                <div class="card risks-card" id="risks-card" style="display: none;">
+                    <div class="card-header">
+                        <h3>⚠️ 潜在风险</h3>
+                    </div>
+                    <div class="card-content">
+                        <ul id="risks-list" class="risks-list">
+                            <!-- 风险列表将动态生成 -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 脚本 -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

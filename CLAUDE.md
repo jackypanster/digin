@@ -18,6 +18,9 @@ uv sync
 # Install development dependencies
 uv sync --dev
 
+# Install Web interface dependencies (optional)
+uv sync --extra web
+
 # Install package in development mode
 uv pip install -e .
 
@@ -42,6 +45,10 @@ digin /path/to/analyze --provider claude --verbose
 python -m src . --dry-run                    # Preview analysis plan
 python -m src . --force --verbose           # Force refresh with detailed output
 python -m src . --output-format json        # JSON output format
+
+# Web interface usage
+python -m web /path/to/analyzed/project      # Start web server for visualization
+# Then open http://localhost:8000 in browser
 ```
 
 ### Testing
@@ -126,6 +133,8 @@ The application follows a modular architecture with clear separation of concerns
 **SummaryAggregator** (`src/aggregator.py`): Handles aggregation of child directory summaries for parent directories.
 
 **ConfigManager** (`src/config.py`): Manages configuration loading from multiple sources (default.json, .digin.json, CLI options).
+
+**DiginWebServer** (`web/server.py`): FastAPI-based web server that provides REST API and static file serving for visualization. Implements security measures to prevent path traversal attacks and only allows access to digest.json files.
 
 ### Analysis Flow
 
@@ -287,4 +296,10 @@ python -m src . --provider claude --verbose  # Full analysis with verbose output
 
 # 5. Commit changes (pre-commit hooks will run automatically)
 git add . && git commit -m "feat: your change description"
+
+# 6. Web interface development workflow (if working on web module)
+uv sync --extra web                       # Install web dependencies
+python -m web . --dry-run               # Test with current project
+# Edit web/static/* files for frontend changes
+# Edit web/server.py for backend changes
 ```
