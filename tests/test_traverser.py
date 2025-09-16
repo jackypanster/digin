@@ -382,3 +382,80 @@ class TestDirectoryTraverser:
         # Should not include hidden subdirectories
         subdir_names = [d["name"] for d in info["subdirs"]]
         assert ".vscode" not in subdir_names
+
+    def test_root_directory_with_ignored_name(self, tmp_path):
+        """Test that root directory is always scanned even if name matches ignore patterns."""
+        # Create test settings that ignore 'dist' and 'build' directories
+        settings = DigginSettings(
+            ignore_dirs=["node_modules", ".git", "dist", "build"],
+            ignore_files=["*.pyc"],
+            include_extensions=[".py", ".js"],
+        )
+        traverser = DirectoryTraverser(settings)
+
+        # Test with root directory named 'dist' (should be ignored)
+        dist_root = tmp_path / "dist"
+        dist_root.mkdir()
+
+        # Create structure inside 'dist' root
+        (dist_root / "src").mkdir()
+        (dist_root / "src" / "main.py").touch()
+        (dist_root / "tests").mkdir()
+        (dist_root / "tests" / "test.py").touch()
+
+        # Create a nested 'dist' directory (should be ignored)
+        (dist_root / "nested_dist").mkdir()
+        (dist_root / "nested_dist" / "file.js").touch()
+
+        # Test find_leaf_directories - root should still be scanned
+        leaf_dirs = traverser.find_leaf_directories(dist_root)
+        relative_paths = [str(d.relative_to(dist_root)) for d in leaf_dirs]
+
+        # Should find leaf directories inside the 'dist' root
+        assert "src" in relative_paths
+        assert "tests" in relative_paths
+        assert "nested_dist" in relative_paths  # This is a subdirectory, should be found
+
+        # Test analysis order - root should be included
+        analysis_order = traverser.get_analysis_order(dist_root)
+        relative_analysis = [str(d.relative_to(dist_root)) for d in analysis_order]
+
+        assert "src" in relative_analysis
+        assert "tests" in relative_analysis
+        assert "." in relative_analysis  # Root directory itself
+
+    def test_root_directory_vs_subdirectory_ignore_rules(self, tmp_path):
+        """Test that ignore rules apply to subdirectories but not root directory."""
+        settings = DigginSettings(
+            ignore_dirs=["build"],
+            ignore_files=[],
+            include_extensions=[".py"],
+        )
+        traverser = DirectoryTraverser(settings)
+
+        # Create root directory named 'build'
+        build_root = tmp_path / "build"
+        build_root.mkdir()
+
+        # Create content in build root
+        (build_root / "main.py").touch()
+        (build_root / "src").mkdir()
+        (build_root / "src" / "app.py").touch()
+
+        # Create nested 'build' directory (should be ignored)
+        (build_root / "build").mkdir()  # This should be ignored
+        (build_root / "build" / "output.py").touch()
+
+        leaf_dirs = traverser.find_leaf_directories(build_root)
+        relative_paths = [str(d.relative_to(build_root)) for d in leaf_dirs]
+
+        # Root 'build' directory should be scanned, so 'src' should be found
+        assert "src" in relative_paths
+
+        # Nested 'build' directory should be ignored
+        assert "build" not in relative_paths
+
+        # Verify we can collect info from the root 'build' directory
+        info = traverser.collect_directory_info(build_root)
+        file_names = [f["name"] for f in info["files"]]
+        assert "main.py" in file_names
