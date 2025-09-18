@@ -47,7 +47,7 @@ def print_banner() -> None:
 
 
 def load_and_configure_settings(
-    config_path: Optional[Path], provider: Optional[str], verbose: bool, force: bool
+    config_path: Optional[Path], provider: Optional[str], verbose: bool, force: bool, narrative: bool
 ) -> DigginSettings:
     """Load configuration and apply CLI overrides."""
     config_manager = ConfigManager(config_file=config_path)
@@ -59,6 +59,7 @@ def load_and_configure_settings(
         settings.verbose = True
     if force:
         settings.cache_enabled = False
+    settings.narrative_enabled = narrative
 
     return settings
 
@@ -216,10 +217,10 @@ def _create_progress_analyzer(
 
 
 def load_and_validate_config(
-    config: Optional[Path], provider: Optional[str], verbose: bool, force: bool
+    config: Optional[Path], provider: Optional[str], verbose: bool, force: bool, narrative: bool
 ) -> DigginSettings:
     """Load configuration and validate settings."""
-    settings = load_and_configure_settings(config, provider, verbose, force)
+    settings = load_and_configure_settings(config, provider, verbose, force, narrative)
     initialize_logging(settings)
     return settings
 
@@ -299,6 +300,11 @@ def display_results(
 )
 @click.option("--quiet", "-q", is_flag=True, help="Suppress non-essential output")
 @click.option("--clear-cache", is_flag=True, help="Clear cache before analysis")
+@click.option(
+    "--narrative/--no-narrative",
+    default=True,
+    help="Enable/disable narrative summaries for conversational style output",
+)
 @click.version_option(version=__version__, prog_name="digin")
 def main(
     path: Path,
@@ -310,6 +316,7 @@ def main(
     output_format: str,
     quiet: bool,
     clear_cache: bool,
+    narrative: bool,
 ) -> None:
     """
     Analyze a codebase and generate structured understanding.
@@ -320,7 +327,7 @@ def main(
         if not quiet:
             print_banner()
 
-        settings = load_and_validate_config(config, provider, verbose, force)
+        settings = load_and_validate_config(config, provider, verbose, force, narrative)
         validate_environment(path, settings, verbose, quiet)
 
         analyzer = setup_analyzer(settings, path, clear_cache, quiet)
