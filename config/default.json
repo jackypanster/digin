@@ -61,6 +61,7 @@
   "parallel_workers": 1,
   "max_depth": 10,
   "verbose": false,
+  "narrative_enabled": true,
   "logging": {
     "enabled": true,
     "level": "INFO",

@@ -129,8 +129,17 @@ class CacheManager:
                     clear_single_dir(item)
 
     def _calculate_directory_hash(self, directory: Path) -> str:
-        """Calculate hash for directory contents including child digests."""
+        """Calculate hash for directory contents including child digests and configuration."""
         hasher = hashlib.sha256()
+
+        # Include configuration that affects analysis output
+        config_items = [
+            f"narrative_enabled:{self.settings.narrative_enabled}",
+            f"api_provider:{self.settings.api_provider}",
+        ]
+        for item in sorted(config_items):
+            hasher.update(item.encode("utf-8"))
+
         files_to_hash = self._get_files_to_hash(directory)
 
         # Hash each file's metadata and content

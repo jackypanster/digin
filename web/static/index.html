@@ -30,6 +30,23 @@
                     🔄
                 </button>
             </div>
+
+            <!-- 引导路径卡片 -->
+            <div class="onboarding-card" id="onboarding-card" style="display: none;">
+                <div class="card-header">
+                    <h3>🚀 新手指南</h3>
+                    <button id="toggle-onboarding" class="toggle-btn">👁️</button>
+                </div>
+                <div class="onboarding-content">
+                    <div class="onboarding-stats">
+                        <span id="onboarding-steps">0 步</span> ·
+                        <span id="onboarding-time">未知</span> ·
+                        <span id="onboarding-difficulty">中等</span>
+                    </div>
+                    <button id="start-onboarding" class="start-btn">開始探索</button>
+                </div>
+            </div>
+
             <div class="tree-container">
                 <div id="directory-tree" class="directory-tree">
                     <!-- 目录树将通过 JavaScript 动态生成 -->
@@ -52,10 +69,27 @@
             </div>
 
             <div id="content-area" class="content-area" style="display: none;">
+
+                <!-- 敘述歡迎卡片 -->
+                <div class="card narrative-welcome-card" id="narrative-welcome-card">
+                    <div class="card-header">
+                        <h3>👋 歡迎探索</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="narrative-handshake">
+                            <p id="narrative-handshake-text">載入中...</p>
+                        </div>
+                        <div class="narrative-next-steps" id="narrative-next-steps-section" style="display: none;">
+                            <h4>🎯 建議路徑</h4>
+                            <p id="narrative-next-steps-text"></p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 摘要卡片 -->
                 <div class="card summary-card">
                     <div class="card-header">
-                        <h3>📝 项目摘要</h3>
+                        <h3>📝 项目概览</h3>
                         <span id="confidence-badge" class="confidence-badge">置信度: --</span>
                     </div>
                     <div class="card-content">
@@ -70,7 +104,14 @@
                             </div>
                         </div>
                         <div class="summary-text">
-                            <p id="project-summary">正在加载摘要...</p>
+                            <div class="narrative-summary" id="narrative-summary-section" style="display: none;">
+                                <h4>🗣️ 简单说明</h4>
+                                <p id="narrative-summary-text"></p>
+                            </div>
+                            <div class="technical-summary">
+                                <h4>📊 技术摘要</h4>
+                                <p id="project-summary">正在加载摘要...</p>
+                            </div>
                         </div>
                     </div>
                 </div>
