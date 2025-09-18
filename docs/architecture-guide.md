@@ -77,3 +77,11 @@
 - `README.md`：安裝與使用示例
 - `docs/PRD.md`：產品需求與場景
 - `AGENTS.md`：貢獻指南與風格規範
+
+## 八、敘事摘要與新人引導（2025 Q3 增強）
+- **Narrative Fields**：所有 `digest.json` 現在可選帶 `narrative.summary`、`narrative.handshake`、`narrative.next_steps`；可在 `config/default.json` 或 CLI `--narrative/--no-narrative` 控制生成。`SummaryAggregator` 會在聚合層注入講人話摘要，並在緩存哈希中考慮設定，確保切換敘事模式時父層會重新生成。
+- **Prompt 調整**：`config/prompt.txt` 增加敘事提示片段，引導 AI 產出中文友善語調（例如歡迎語、建議下一步）。Leaf 模組仍由 AI 直出，父層敘事由聚合器基於子模組資訊合成。
+- **Project Map Builder**：`src/project_map.py` 掃描整個目錄樹的 `digest.json`（含 narrative），計算節點重要性、引導路徑以及推薦閱讀清單，輸出 `project_map.json` 給 Web 端。
+- **Web API & UI**：`/api/project-map` 回傳整體樹狀結構與 `onboarding_path`；前端在左欄渲染可展開的目錄樹，提供🚀引導高亮與 CTA，右欄則顯示 handshake/next_steps、推薦順序與原始技術摘要。
+- **常見擴展**：若要調整導覽節奏，可調整 `ProjectMapBuilder._calculate_importance_scores` 權重；若要新增語言，可在前端引導卡片與 CLI 選項中加入對應文案。
+
