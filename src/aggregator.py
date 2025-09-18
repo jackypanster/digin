@@ -65,6 +65,12 @@ class SummaryAggregator:
             "analyzer_version": __version__,
         }
 
+        # Add narrative fields if enabled
+        if self.settings.narrative_enabled:
+            digest["narrative"] = self._generate_narrative_fields(
+                directory, child_digests, direct_files_info
+            )
+
         # Remove empty sections
         return self._clean_empty_fields(digest)
 
@@ -395,6 +401,175 @@ class SummaryAggregator:
 
         # Ensure within bounds
         return max(0, min(100, int(avg_confidence)))
+
+    def _generate_narrative_fields(
+        self,
+        directory: Path,
+        child_digests: List[Dict[str, Any]],
+        direct_files_info: Optional[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        """Generate narrative fields for conversational summaries.
+
+        Args:
+            directory: Parent directory
+            child_digests: Child directory digests
+            direct_files_info: Direct files information
+
+        Returns:
+            Narrative fields dictionary
+        """
+        narrative = {}
+
+        # Generate conversational summary (講人話)
+        narrative["summary"] = self._generate_conversational_summary(
+            directory, child_digests, direct_files_info
+        )
+
+        # Generate quick handshake for onboarding
+        narrative["handshake"] = self._generate_handshake(
+            directory, child_digests, direct_files_info
+        )
+
+        # Generate suggested next steps
+        narrative["next_steps"] = self._generate_next_steps(
+            directory, child_digests, direct_files_info
+        )
+
+        return narrative
+
+    def _generate_conversational_summary(
+        self,
+        directory: Path,
+        child_digests: List[Dict[str, Any]],
+        direct_files_info: Optional[Dict[str, Any]],
+    ) -> str:
+        """Generate human-friendly conversational summary."""
+        if not child_digests:
+            return f"這是 {directory.name} 目錄，還沒有發現具體的功能模組。"
+
+        child_count = len(child_digests)
+        domain_desc = self._get_domain_description(child_digests)
+
+        # Extract key information from children instead of full narratives
+        child_keys = []
+        for digest in child_digests:
+            # Prefer module name + primary capability over full narrative
+            name = digest.get("name", "unknown")
+            capabilities = digest.get("capabilities", [])
+
+            if capabilities:
+                # Use the first capability as the key descriptor
+                key_desc = capabilities[0][:15] + ("..." if len(capabilities[0]) > 15 else "")
+                child_keys.append(f"{name}({key_desc})")
+            else:
+                child_keys.append(name)
+
+        # Build concise summary
+        if child_keys:
+            key_modules = " | ".join(child_keys[:3])
+            if child_count > 3:
+                more_text = f"，等{child_count}個模組"
+            else:
+                more_text = f"，共{child_count}個模組"
+            return f"這個 {directory.name} 目錄包含{domain_desc}相關功能，主要模組：{key_modules}{more_text}。"
+
+        # Fallback to capabilities-based description
+        capabilities = self._merge_capabilities(child_digests)
+        if capabilities:
+            return f"這是 {directory.name} 目錄，主要負責{capabilities[0]}等功能，包含 {child_count} 個相關模組。"
+
+        return f"這是包含 {child_count} 個子模組的 {directory.name} 目錄。"
+
+    def _generate_handshake(
+        self,
+        directory: Path,
+        child_digests: List[Dict[str, Any]],
+        direct_files_info: Optional[Dict[str, Any]],
+    ) -> str:
+        """Generate quick intro for onboarding."""
+        if not child_digests:
+            return f"歡迎查看 {directory.name}！"
+
+        dominant_kind = self._get_dominant_kind(child_digests)
+        capability_summary = self._get_top_capability_summary(child_digests)
+
+        kind_intros = {
+            "service": "這裡是核心業務邏輯區",
+            "lib": "這裡是工具庫和通用組件區",
+            "test": "這裡是測試代碼區",
+            "ui": "這裡是用戶界面區",
+            "config": "這裡是配置管理區",
+            "infra": "這裡是基礎設施區",
+        }
+
+        intro = kind_intros.get(dominant_kind, "這裡是項目的重要區域")
+        return f"👋 {intro}，{capability_summary}，共有 {len(child_digests)} 個模組等你探索！"
+
+    def _generate_next_steps(
+        self,
+        directory: Path,
+        child_digests: List[Dict[str, Any]],
+        direct_files_info: Optional[Dict[str, Any]],
+    ) -> str:
+        """Generate suggested exploration paths."""
+        if not child_digests:
+            return "建議先查看目錄下的直接文件，了解基本結構。"
+
+        # Sort children by importance (confidence + capabilities count)
+        sorted_children = sorted(
+            child_digests,
+            key=lambda d: (
+                d.get("confidence", 0) + len(d.get("capabilities", [])) * 10
+            ),
+            reverse=True,
+        )
+
+        top_children = [d.get("name", "unknown") for d in sorted_children[:2]]
+
+        if len(child_digests) == 1:
+            return f"建議先查看 {top_children[0]} 模組，了解核心功能。"
+        elif len(child_digests) <= 3:
+            return f"建議按順序查看：{' → '.join(top_children)}，逐步理解整體架構。"
+        else:
+            return f"建議先重點查看 {' 和 '.join(top_children)} 模組，這是理解整個目錄的關鍵入口。"
+
+    def _get_domain_description(self, child_digests: List[Dict[str, Any]]) -> str:
+        """Get domain description based on child capabilities."""
+        all_capabilities = []
+        for digest in child_digests:
+            all_capabilities.extend(digest.get("capabilities", []))
+
+        # Simple keyword matching for domain detection
+        capability_text = " ".join(all_capabilities).lower()
+
+        if any(
+            keyword in capability_text
+            for keyword in ["web", "http", "api", "server", "service"]
+        ):
+            return "Web服務"
+        elif any(
+            keyword in capability_text for keyword in ["data", "database", "storage"]
+        ):
+            return "數據處理"
+        elif any(keyword in capability_text for keyword in ["ui", "frontend", "界面"]):
+            return "用戶界面"
+        elif any(keyword in capability_text for keyword in ["test", "測試"]):
+            return "測試"
+        else:
+            return "功能"
+
+    def _get_top_capability_summary(self, child_digests: List[Dict[str, Any]]) -> str:
+        """Get summary of top capabilities."""
+        capabilities = self._merge_capabilities(child_digests)
+        if not capabilities:
+            return "提供多種功能"
+
+        if len(capabilities) == 1:
+            return f"專注於{capabilities[0]}"
+        elif len(capabilities) <= 3:
+            return f"主要提供{' | '.join(capabilities)}"
+        else:
+            return f"提供{capabilities[0]}等{len(capabilities)}項功能"
 
     def _clean_empty_fields(self, digest: Dict[str, Any]) -> Dict[str, Any]:
         """Remove empty fields from digest.

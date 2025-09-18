@@ -43,6 +43,8 @@ dependencies = [
     "rich>=13.0.0",
     "pathspec>=0.11.0",
     "pydantic>=2.0.0",
+    "uvicorn>=0.33.0",
+    "fastapi>=0.116.2",
 ]
 
 [project.optional-dependencies]

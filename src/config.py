@@ -49,6 +49,7 @@ class DigginSettings:
     parallel_workers: int = 1
     max_depth: int = 10
     verbose: bool = False
+    narrative_enabled: bool = True
 
     # Logging settings
     logging: LoggingSettings = field(default_factory=LoggingSettings)
