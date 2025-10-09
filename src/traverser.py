@@ -196,9 +196,9 @@ class DirectoryTraverser:
             }
 
             # Add content preview for text files with generous limits for AI analysis
-            # Use larger limits for modern AI models with large context windows
-            max_file_size = 100 * 1024  # 100KB per file (up from 8KB)
-            max_content_read = 50 * 1024  # Read up to 50KB per file (up from 2KB)
+            # Use configurable limits optimized for modern AI models (Gemini 2.5 Pro: 2M context)
+            max_file_size = self.settings.analysis_limits.get_max_analysis_file_size_bytes()
+            max_content_read = self.settings.analysis_limits.get_max_content_per_file_bytes()
 
             if file_info["is_text"] and stat.st_size <= max_file_size:
                 try:

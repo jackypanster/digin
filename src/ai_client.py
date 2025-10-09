@@ -50,10 +50,20 @@ def build_prompt(
     template: str,
     directory_info: Dict[str, Any],
     children_digests: List[Dict[str, Any]],
+    max_files: int = 30,
 ) -> str:
-    """Build analysis prompt from template."""
+    """Build analysis prompt from template.
+
+    Args:
+        template: Prompt template string
+        directory_info: Directory information dictionary
+        children_digests: List of child directory digests
+        max_files: Maximum files to include (default: 30)
+    """
     file_list_str = format_file_list(directory_info.get("files", []))
-    code_snippets_str = format_code_snippets(directory_info.get("files", []))
+    code_snippets_str = format_code_snippets(
+        directory_info.get("files", []), max_files=max_files
+    )
     children_digests_str = format_children_digests(children_digests)
 
     return template.format(
@@ -78,13 +88,20 @@ def format_file_list(files: List[Dict[str, Any]]) -> str:
     return "\n".join(file_list)
 
 
-def format_code_snippets(files: List[Dict[str, Any]]) -> str:
-    """Format code snippets for prompt."""
+def format_code_snippets(
+    files: List[Dict[str, Any]], max_files: int = 30
+) -> str:
+    """Format code snippets for prompt.
+
+    Args:
+        files: List of file information dictionaries
+        max_files: Maximum number of files to include (default: 30)
+    """
     code_snippets = []
 
-    # Include up to 20 files with content
+    # Include up to max_files with content
     files_with_content = [f for f in files if "content_preview" in f]
-    max_files = min(20, len(files_with_content))
+    max_files = min(max_files, len(files_with_content))
 
     for file_info in files_with_content[:max_files]:
         content = file_info["content_preview"]
@@ -358,8 +375,11 @@ def analyze_directory_with_ai(
     # Load prompt template
     prompt_template = load_prompt_template()
 
-    # Build prompt
-    prompt = build_prompt(prompt_template, directory_info, children_digests or [])
+    # Build prompt with configured limits
+    max_files = settings.analysis_limits.max_files_per_request
+    prompt = build_prompt(
+        prompt_template, directory_info, children_digests or [], max_files=max_files
+    )
 
     # Call appropriate AI CLI
     if provider.lower() == "claude":

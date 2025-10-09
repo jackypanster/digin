@@ -45,6 +45,8 @@ digin /path/to/analyze --provider claude --verbose
 python -m src . --dry-run                    # Preview analysis plan
 python -m src . --force --verbose           # Force refresh with detailed output
 python -m src . --output-format json        # JSON output format
+python -m src . --narrative                  # Enable conversational summaries
+python -m src . --no-narrative               # Disable narrative (technical only)
 
 # Web interface usage
 python -m web /path/to/analyzed/project      # Start web server for visualization
@@ -73,6 +75,9 @@ uv run pytest tests/test_analyzer.py
 
 # Run specific test function
 uv run pytest tests/test_analyzer.py::test_analyze_directory -v
+
+# Run specific test for narrative generation
+uv run pytest tests/test_aggregator_narrative.py::TestNarrativeGeneration::test_conversational_summary_generation -xvs
 
 # Run tests by category (using markers)
 uv run pytest -m unit              # Unit tests only
@@ -136,17 +141,20 @@ The application follows a modular architecture with clear separation of concerns
 
 **DiginWebServer** (`web/server.py`): FastAPI-based web server that provides REST API and static file serving for visualization. Implements security measures to prevent path traversal attacks and only allows access to digest.json files.
 
+**ProjectMapBuilder** (`src/project_map.py`): Generates project maps and onboarding paths from digest files. Calculates importance scores for directories, creates recommended reading lists, and generates step-by-step exploration paths for new developers. Outputs `project_map.json` for web interface consumption.
+
 ### Analysis Flow
 
 1. **Configuration Loading**: Two-tier precedence system
    - Base: `config/default.json` (built-in defaults)
    - Override: CLI options (highest priority, overrides defaults)
 2. **Directory Traversal**: Scans repository, identifies leaf directories first
-3. **Bottom-up Analysis**: 
-   - Leaf directories: AI analysis of files via `src/ai_client.py`
-   - Parent directories: Aggregation of child summaries via `src/aggregator.py`
+3. **Bottom-up Analysis**:
+   - Leaf directories: AI analysis of files via `src/ai_client.py` (generates technical fields + narrative if enabled)
+   - Parent directories: Aggregation of child summaries via `src/aggregator.py` (includes narrative synthesis)
 4. **Caching**: Results cached as digest.json files (managed by `src/cache.py`)
-5. **Output**: Structured JSON with project understanding
+5. **Project Map Generation** (optional): `ProjectMapBuilder` scans all digest files to create project_map.json with importance scores and onboarding paths
+6. **Output**: Structured JSON with project understanding, conversational summaries, and exploration guidance
 
 ### Key Patterns
 
@@ -161,11 +169,13 @@ The application follows a modular architecture with clear separation of concerns
 Default configuration is in `config/default.json`. Users can override via CLI options. Key settings:
 
 - `ignore_dirs`: Directories to skip (node_modules, .git, etc.)
-- `ignore_files`: File patterns to ignore (*.pyc, *.log, etc.) 
+- `ignore_files`: File patterns to ignore (*.pyc, *.log, etc.)
 - `include_extensions`: File extensions to analyze
 - `api_provider`: AI provider (gemini/claude, default: gemini)
 - `cache_enabled`: Whether to use digest caching
 - `max_depth`: Maximum directory depth to analyze
+- `narrative_enabled`: Whether to generate conversational summaries (default: true) - includes summary, handshake, and next_steps fields
+- `logging`: Comprehensive logging configuration including AI command logging with customizable format and detail level
 
 ## Python Coding Guidelines
 
@@ -268,10 +278,14 @@ class FileCounter:
 - `src/ai_client.py`: AI provider abstraction (Claude/Gemini CLI calls)
 - `src/traverser.py`: Directory scanning with configurable filtering
 - `src/cache.py`: File content hash-based caching to avoid redundant AI calls
-- `src/aggregator.py`: Parent directory summary aggregation logic
+- `src/aggregator.py`: Parent directory summary aggregation logic (includes narrative synthesis)
+- `src/project_map.py`: Project map builder that generates importance scores, onboarding paths, and recommended reading lists
 - `src/config.py`: Two-tier configuration system (default.json → CLI)
-- `config/prompt.txt`: Chinese prompt template for AI analysis
-- `config/default.json`: Base configuration with ignore patterns and settings
+- `src/logger.py`: Comprehensive logging system with AI command logging and structured output
+- `config/prompt.txt`: Chinese prompt template for AI analysis (includes narrative generation prompts)
+- `config/default.json`: Base configuration with ignore patterns, settings, and narrative configuration
+- `web/server.py`: FastAPI server providing REST API for project map and digest visualization
+- `web/static/`: Frontend assets for interactive project tree and onboarding path visualization
 
 ### Logging System
 - Comprehensive logging with configurable levels and AI command logging
@@ -293,12 +307,19 @@ uv run pytest -m real_ai                  # Real AI tests (slower)
 python -m src . --dry-run                 # Preview what would be analyzed
 python -m src . --provider claude --verbose  # Full analysis with verbose output
 
-# 5. Commit changes (pre-commit hooks will run automatically)
-git add . && git commit -m "feat: your change description"
+# 5. Test narrative generation features
+python -m src . --narrative              # Enable conversational summaries
+python -m src . --no-narrative           # Disable narrative (technical only)
+uv run pytest tests/test_aggregator_narrative.py -v  # Test narrative generation
+uv run pytest tests/test_project_map.py -v           # Test project map building
 
 # 6. Web interface development workflow (if working on web module)
 uv sync --extra web                       # Install web dependencies
 python -m web . --dry-run               # Test with current project
-# Edit web/static/* files for frontend changes
-# Edit web/server.py for backend changes
+python -m web .                          # Start web server
+# Edit web/static/* files for frontend changes (project map UI, onboarding paths)
+# Edit web/server.py for backend changes (new endpoints for project maps)
+
+# 7. Commit changes (pre-commit hooks will run automatically)
+git add . && git commit -m "feat: your change description"
 ```

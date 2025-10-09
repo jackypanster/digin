@@ -30,6 +30,43 @@ class LoggingSettings:
 
 
 @dataclass
+class AnalysisLimits:
+    """Analysis limits for AI processing.
+
+    Controls how much content is sent to AI for analysis per directory.
+    Optimized for Gemini 2.5 Pro's 2M token context window.
+    """
+
+    max_analysis_file_size: str = "200KB"  # Files larger than this are skipped
+    max_content_per_file: str = "150KB"  # Max content read per file
+    max_files_per_request: int = 30  # Max files sent to AI per request
+
+    def get_max_analysis_file_size_bytes(self) -> int:
+        """Convert max_analysis_file_size to bytes."""
+        return self._parse_size(self.max_analysis_file_size)
+
+    def get_max_content_per_file_bytes(self) -> int:
+        """Convert max_content_per_file to bytes."""
+        return self._parse_size(self.max_content_per_file)
+
+    def _parse_size(self, size_str: str) -> int:
+        """Parse human-readable size string to bytes."""
+        size_str = size_str.upper().strip()
+
+        if not size_str:
+            raise ValueError("Size string cannot be empty")
+
+        if size_str.endswith("KB"):
+            return int(size_str[:-2]) * 1024
+        elif size_str.endswith("MB"):
+            return int(size_str[:-2]) * 1024 * 1024
+        elif size_str.endswith("GB"):
+            return int(size_str[:-2]) * 1024 * 1024 * 1024
+        else:
+            return int(size_str)  # Assume bytes
+
+
+@dataclass
 class DigginSettings:
     """Configuration settings for digin."""
 
@@ -50,6 +87,9 @@ class DigginSettings:
     max_depth: int = 10
     verbose: bool = False
     narrative_enabled: bool = True
+
+    # Analysis limits (content sent to AI)
+    analysis_limits: AnalysisLimits = field(default_factory=AnalysisLimits)
 
     # Logging settings
     logging: LoggingSettings = field(default_factory=LoggingSettings)
@@ -127,6 +167,11 @@ class ConfigManager:
         if "logging" in merged_config:
             logging_config = merged_config.pop("logging")
             merged_config["logging"] = LoggingSettings(**logging_config)
+
+        # Handle nested analysis_limits configuration
+        if "analysis_limits" in merged_config:
+            analysis_limits_config = merged_config.pop("analysis_limits")
+            merged_config["analysis_limits"] = AnalysisLimits(**analysis_limits_config)
 
         return DigginSettings(**merged_config)
 
